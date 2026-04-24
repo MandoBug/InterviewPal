@@ -86,3 +86,28 @@ docker-compose up --build
 | 2      | Interview System             | Interview sessions, AI question generation |
 | 3      | Recording & Media            | Recording and playback                     |
 | 4      | AI Feedback & Analytics      | AI feedback, scoring, email summaries      |
+
+## Scrum Boards
+
+### Sprint 1 Scrum Board — Foundation & User Management
+
+| User Story | To-Do | In Progress | Done |
+|-----------|-------|-------------|------|
+| Sign Up | Final backend integration, full testing | Signup UI, client-side validation, backend endpoint, password hashing, error handling | Initial signup flow |
+| Secure Login | Session/JWT validation, full testing | Login UI, backend endpoint, password verification, secure token handling | Basic login flow |
+| Logout | Final testing | Clear cookies/local storage, redirect handling | Logout button, basic logout flow |
+| Session Security | Protected route testing | Middleware setup, frontend auth state handling, session handling | Initial auth middleware |
+| Role Selection | Final persistence testing | Backend preference storage, validation | Role selection UI |
+| Dashboard Layout | UI polish, responsive styling | Navigation UI, placeholder components | Basic dashboard scaffold |
+
+---
+
+### Sprint 2 Scrum Board — Interview Orchestration
+
+| User Story | To-Do | In Progress | Done |
+|-----------|-------|-------------|------|
+| Start Interview Session | Start button, routing, backend session endpoint, session state storage, testing | — | — |
+| Role-Based AI Question Generation | Backend endpoint, AI API integration, prompt setup, response parsing, error handling, testing | — | — |
+| Question Navigation | UI display, next button, state management, edge case handling, testing | — | — |
+| Question Generation UI Feedback | Loading indicator, status message, loading state handling, testing | — | — |
+
