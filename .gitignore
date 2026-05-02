@@ -1,23 +1,16 @@
-# macOS
-.DS_Store
-
-# Environment files
-.env
-.env.local
-.env.*.local
-
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
+*.pyd
 venv/
-env/
-.venv/
+.env
 
 # Node
 node_modules/
 .next/
-npm-debug.log*
+out/
+dist/
 
-# Docker
-*.log
+# OS
+.DS_Store
