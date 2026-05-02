@@ -18,9 +18,8 @@ export default function Home() {
         </p>
 
         <div className="flex gap-4 justify-center">
-          {/* Changed this to /dashboard so you can see your work immediately */}
           <Link
-            href="/dashboard"
+            href="/auth"
             className="rounded-xl bg-blue-600 px-8 py-4 text-white font-bold text-lg hover:bg-blue-700 transition-all shadow-lg hover:shadow-blue-200 active:scale-95"
           >
             Get Started

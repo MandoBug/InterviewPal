@@ -1,16 +1,18 @@
-from pydantic import BaseModel
-from uuid import UUID
 from datetime import datetime
+from uuid import UUID
+
+from pydantic import BaseModel, Field
+
 from app.models.interview import SessionStatus
 
 
 class StartInterviewRequest(BaseModel):
-    role: str
+    role: str = Field(..., min_length=1, max_length=255)
 
 
 class SubmitAnswerRequest(BaseModel):
-    question: str
-    answer: str
+    question: str = Field(..., min_length=1)
+    answer: str = Field(..., min_length=1)
 
 
 class InterviewQuestion(BaseModel):

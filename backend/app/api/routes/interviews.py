@@ -27,13 +27,13 @@ async def start_interview(
 ):
     session = InterviewSession(
         user_id=current_user["user_id"],
-        role=payload.role,
+        role=payload.role.strip(),
     )
     db.add(session)
     await db.flush()
     await db.refresh(session)
 
-    questions = await generate_interview_questions(payload.role)
+    questions = await generate_interview_questions(payload.role.strip())
 
     return InterviewSessionResponse(
         id=session.id,

@@ -1,88 +1,72 @@
 # InterviewPal
 
-AI-powered mock interview preparation platform.
+AI-powered mock interview practice app.
 
-## Team
+## Sprint 2 complete flow
 
-| Name              | Role           |
-|-------------------|----------------|
-| Armando Tamayo    | Product Owner  |
-| Jerry Chen        | Scrum Master   |
-| Yang Chao         | Developer      |
-| Akshay Rajendran  | Developer      |
-| Theo Hudson       | Developer      |
+Sprint 2 covers:
 
-## Tech Stack
+1. Start a new interview session from the dashboard.
+2. Use the selected role to generate role-based interview questions.
+3. Show questions one at a time with next-question bounds protection.
+4. Show a loading message while questions are being generated.
 
-| Layer       | Technology                  |
-|-------------|-----------------------------|
-| Frontend    | React + Next.js (TypeScript)|
-| Backend     | FastAPI (Python)            |
-| Database    | PostgreSQL                  |
-| Cache       | Redis                       |
-| AI          | Claude / OpenAI API         |
-| Storage     | AWS S3                      |
-| Hosting     | Vercel (FE) + Railway (BE)  |
-| CDN/Proxy   | Cloudflare                  |
+The AI service now has a safe fallback question generator, so the Sprint 2 demo still works even when `ANTHROPIC_API_KEY` is not set.
 
-## Project Structure
-
-```
-InterviewPal/
-├── frontend/          # Next.js app
-├── backend/           # FastAPI app
-├── docs/              # Documentation
-├── .github/workflows/ # CI/CD
-├── docker-compose.yml # Local dev environment
-└── README.md
-```
-
-## Getting Started
-
-### Prerequisites
-
-- Python 3.11+
-- Node.js 20+
-- PostgreSQL 15+
-- Redis
-
-### Backend Setup
+## Run with Docker
 
 ```bash
-cd backend
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+docker compose up --build
+```
+
+Then open:
+
+- Frontend: http://localhost:3000
+- Backend docs: http://localhost:8000/docs
+
+If the database is new, run migrations from another terminal:
+
+```bash
+docker compose exec backend alembic upgrade head
+```
+
+## Run locally without Docker
+
+Start PostgreSQL on port `5433`, then from `backend/`:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env      # Fill in your env vars
-alembic upgrade head       # Run database migrations
+alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-Backend runs at `http://localhost:8000`  
-API docs at `http://localhost:8000/docs`
-
-### Frontend Setup
+From `frontend/`:
 
 ```bash
-cd frontend
 npm install
-cp .env.example .env.local  # Fill in your env vars
 npm run dev
 ```
 
-Frontend runs at `http://localhost:3000`
+## Demo steps
 
-### Docker (Full Stack)
+1. Sign up or sign in.
+2. On the dashboard, choose a role.
+3. Click **Start Interview**.
+4. Wait for the **Generating questions...** message to finish.
+5. Answer a question, submit it, view feedback, and continue one question at a time.
 
-```bash
-docker-compose up --build
-```
+Project links
 
-## Sprint Overview
+release plan:
+https://docs.google.com/document/d/13Jqi1jiFlav_--dW20AWV1a9BB19D-Uwe-Kj9hmTpW0/edit?tab=t.0#heading=h.roimt6l1sgb5
 
-| Sprint | Focus                        | Goal                                      |
-|--------|------------------------------|--------------------------------------------|
-| 1      | Foundation & User Management | Auth, role selection, dashboard            |
-| 2      | Interview System             | Interview sessions, AI question generation |
-| 3      | Recording & Media            | Recording and playback                     |
-| 4      | AI Feedback & Analytics      | AI feedback, scoring, email summaries      |
+sprint 1 plan:
+https://docs.google.com/document/d/1QpKv4nKTMJOcpIEQS2EjqM__kHh_dNmEJzpvLWf5VY8/edit?tab=t.0#heading=h.smt3uuomxvwp
+
+sprint 1 report:
+https://docs.google.com/document/d/1qs2t7avDfZddFu7wo-kFmuDrUVMs6LsesWgPsFCtOP0/edit?tab=t.0
+
+sprint 2 plan:
+https://docs.google.com/document/d/1dnbutO7fs4uKghcTNi_BIQOJfUIBpy02ooXU-bmqras/edit?tab=t.0
