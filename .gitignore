@@ -1,16 +1,41 @@
-# Python
+# ── Python ──
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
+*.pdb
 venv/
-.env
+.venv/
+env/
+.env/
+*.egg-info/
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
 
-# Node
+# ── Environment / Secrets ──
+.env
+.env.*
+!.env.example
+
+# ── Node ──
 node_modules/
 .next/
 out/
 dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# OS
+# ── OS ──
 .DS_Store
+Thumbs.db
+
+# ── Logs ──
+*.log
+logs/
+
+# ── IDE ──
+.vscode/settings.json
+.idea/
