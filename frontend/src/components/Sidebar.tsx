@@ -11,7 +11,7 @@ export default function Sidebar() {
     { icon: <Home size={24} />, href: '/dashboard' },
     { icon: <User size={24} />, href: '#' },
     { icon: <Video size={24} />, href: '/interview' },
-    { icon: <Settings size={24} />, href: '#' },
+    { icon: <Settings size={24} />, href: '/settings' },
   ];
 
   function handleLogout() {

@@ -2,11 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --foreground-rgb: 0, 0, 0;
-  --background-rgb: 255, 255, 255;
+:root,
+:root[data-theme='light'] {
+  --foreground-rgb: 15, 23, 42;
+  --background-rgb: 248, 250, 252;
+  --card-rgb: 255, 255, 255;
+  --muted-rgb: 100, 116, 139;
+  --border-rgb: 203, 213, 225;
 }
 
+:root[data-theme='dark'] {
+  --foreground-rgb: 248, 250, 252;
+  --background-rgb: 2, 6, 23;
+  --card-rgb: 15, 23, 42;
+  --muted-rgb: 148, 163, 184;
+  --border-rgb: 30, 41, 59;
+}
 body {
   color: rgb(var(--foreground-rgb));
   background: rgb(var(--background-rgb));
