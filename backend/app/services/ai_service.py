@@ -132,12 +132,23 @@ def _has_real_anthropic_key() -> bool:
     return bool(key) and key != "your-key-here"
 
 
-async def generate_interview_questions(role: str, num_questions: int = 5) -> list[dict[str, str]]:
+async def generate_interview_questions(
+    role: str,
+    experience_level: str = "Mid-Level",
+    difficulty: str = "Medium",
+    focus: str = "General",
+    num_questions: int = 5,
+) -> list[dict[str, str]]:
     role = role.strip()
     if not _has_real_anthropic_key():
         return _fallback_questions(role, num_questions)
 
     prompt = f"""Generate {num_questions} mock interview questions for a {role} position.
+
+CONTEXT:
+- Experience Level: {experience_level}
+- Target Difficulty: {difficulty}
+- Interview Focus: {focus}
 
 Return ONLY a JSON array with no extra text. Each object must have exactly these keys:
 - "question": the interview question as a string

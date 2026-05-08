@@ -21,6 +21,9 @@ export default function InterviewPage() {
   const [error, setError] = useState('');
 
   const [session, setSession] = useState<SessionData | null>(null);
+  const [experienceLevel, setExperienceLevel] = useState('Mid-Level');
+  const [difficulty, setDifficulty] = useState('Medium');
+  const [interviewFocus, setInterviewFocus] = useState('General');
   const [questionIndex, setQuestionIndex] = useState(0);
   const [answer, setAnswer] = useState('');
   const [feedback, setFeedback] = useState<FeedbackResult | null>(null);
@@ -47,7 +50,12 @@ export default function InterviewPage() {
     setError('');
     try {
       localStorage.setItem('selected_role', cleanRole);
-      const res = await api.post('/api/interviews/start', { role: cleanRole });
+      const res = await api.post('/api/interviews/start', {
+        role: cleanRole,
+        experience_level: experienceLevel,
+        difficulty: difficulty,
+        interview_focus: interviewFocus,
+      });
       const questions = Array.isArray(res.data.questions) ? res.data.questions : [];
 
       if (questions.length === 0) {
@@ -148,6 +156,46 @@ export default function InterviewPage() {
             placeholder="e.g. Software Engineer, Product Manager"
             className="mb-4 w-full rounded-xl border border-slate-700 bg-[rgb(var(--background-rgb))] px-4 py-3 text-sm text-[rgb(var(--foreground-rgb))] outline-none focus:ring-2 focus:ring-blue-500"
           />
+
+          <div className="mb-6 grid grid-cols-1 gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-[rgb(var(--muted-rgb))]">Experience Level</label>
+              <select
+                value={experienceLevel}
+                onChange={(e) => setExperienceLevel(e.target.value)}
+                className="w-full rounded-xl border border-slate-700 bg-[rgb(var(--background-rgb))] px-4 py-2 text-sm text-[rgb(var(--foreground-rgb))] outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option>Junior</option>
+                <option>Mid-Level</option>
+                <option>Senior</option>
+                <option>Lead</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-[rgb(var(--muted-rgb))]">Difficulty</label>
+              <select
+                value={difficulty}
+                onChange={(e) => setDifficulty(e.target.value)}
+                className="w-full rounded-xl border border-slate-700 bg-[rgb(var(--background-rgb))] px-4 py-2 text-sm text-[rgb(var(--foreground-rgb))] outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option>Easy</option>
+                <option>Medium</option>
+                <option>Hard</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-[rgb(var(--muted-rgb))]">Interview Focus</label>
+              <select
+                value={interviewFocus}
+                onChange={(e) => setInterviewFocus(e.target.value)}
+                className="w-full rounded-xl border border-slate-700 bg-[rgb(var(--background-rgb))] px-4 py-2 text-sm text-[rgb(var(--foreground-rgb))] outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option>General</option>
+                <option>Technical</option>
+                <option>Behavioral</option>
+              </select>
+            </div>
+          </div>
 
           {loading && (
             <div className="mb-4 rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">

@@ -8,6 +8,9 @@ from app.models.interview import SessionStatus
 
 class StartInterviewRequest(BaseModel):
     role: str = Field(..., min_length=1, max_length=255)
+    experience_level: str = "Mid-Level"
+    difficulty: str = "Medium"
+    interview_focus: str = "General"
 
 
 class SubmitAnswerRequest(BaseModel):
