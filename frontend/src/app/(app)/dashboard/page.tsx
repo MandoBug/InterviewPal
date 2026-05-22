@@ -40,7 +40,7 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-950 p-8 text-slate-100">
+    <div className="min-h-screen bg-[rgb(var(--background-rgb))] p-8 text-[rgb(var(--foreground-rgb))]">
       <div className="max-w-5xl mx-auto">
         <header className="flex justify-between items-center mb-10 bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-800">
           <div className="flex items-center gap-3">
@@ -65,15 +65,21 @@ export default function Dashboard() {
           </p>
 
           <div className="grid gap-4 md:grid-cols-[1fr_auto]">
-            <select
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-4 text-white outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {roleOptions.map((option) => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
+            <div className="relative w-full">
+              <select
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                className="w-full appearance-none rounded-xl border border-slate-700 bg-slate-950 px-4 py-4 pr-12 text-white outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {roleOptions.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+
+              <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
+                ▼
+              </div>
+            </div>
 
             <button
               onClick={startInterview}

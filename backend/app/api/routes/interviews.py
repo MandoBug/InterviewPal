@@ -33,7 +33,12 @@ async def start_interview(
     await db.flush()
     await db.refresh(session)
 
-    questions = await generate_interview_questions(payload.role.strip())
+    questions = await generate_interview_questions(
+        role=payload.role.strip(),
+        experience_level=payload.experience_level,
+        difficulty=payload.difficulty,
+        focus=payload.interview_focus,
+    )
 
     return InterviewSessionResponse(
         id=session.id,
