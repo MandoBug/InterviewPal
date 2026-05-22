@@ -40,24 +40,16 @@ export default function VideoInterviewPage() {
   const totalPausedMsRef = useRef(0);
 
   const [phase, setPhase] = useState<Phase>('loading');
-
   const [role, setRole] = useState('Software Engineer');
   const [session, setSession] = useState<SessionData | null>(null);
-
   const [questionIndex, setQuestionIndex] = useState(0);
-
-  const [recordedAnswers, setRecordedAnswers] = useState<RecordedAnswer[]>(
-    []
-  );
-
-  const [currentPlaybackUrl, setCurrentPlaybackUrl] = useState<string | null>(
-    null
-  );
+  const [recordedAnswers, setRecordedAnswers] = useState<RecordedAnswer[]>([]);
+  const [currentPlaybackUrl, setCurrentPlaybackUrl] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [cameraReady, setCameraReady] = useState(false);
   const [error, setError] = useState('');
-
+  const [saveMessage, setSaveMessage] = useState('');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   const currentQuestion = session?.questions[questionIndex];
@@ -67,39 +59,64 @@ export default function VideoInterviewPage() {
       ? ((questionIndex + 1) / session.questions.length) * 100
       : 0;
 
-  const cleanupCamera = useCallback(() => {
+  const stopCamera = useCallback(() => {
+    const preview = videoPreviewRef.current;
+
     mediaStreamRef.current?.getTracks().forEach((track) => {
       track.stop();
     });
 
-    mediaStreamRef.current = null;
-    mediaRecorderRef.current = null;
+    if (preview) {
+      const stream = preview.srcObject as MediaStream | null;
 
+      stream?.getTracks().forEach((track) => {
+        track.stop();
+      });
+
+      preview.pause();
+      preview.srcObject = null;
+      preview.removeAttribute('src');
+      preview.load();
+    }
+
+    mediaStreamRef.current = null;
     setCameraReady(false);
   }, []);
 
-  const setupCamera = useCallback(async () => {
-    try {
-      setError('');
+  const cleanupCamera = useCallback(() => {
+    const recorder = mediaRecorderRef.current;
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      });
-
-      mediaStreamRef.current = stream;
-
-      if (videoPreviewRef.current) {
-        videoPreviewRef.current.srcObject = stream;
+    if (recorder && recorder.state !== 'inactive') {
+      try {
+        recorder.stop();
+      } catch {
+        // Ignore recorder cleanup errors.
       }
-
-      setCameraReady(true);
-    } catch {
-      setError(
-        'Could not access your camera or microphone. Please allow permissions and refresh the page.'
-      );
     }
-  }, []);
+
+    mediaRecorderRef.current = null;
+    stopCamera();
+  }, [stopCamera]);
+
+  async function setupCamera() {
+    setError('');
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true,
+    });
+
+    mediaStreamRef.current = stream;
+
+    if (videoPreviewRef.current) {
+      videoPreviewRef.current.srcObject = stream;
+      await videoPreviewRef.current.play().catch(() => undefined);
+    }
+
+    setCameraReady(true);
+
+    return stream;
+  }
 
   const startSession = useCallback(async (selectedRole: string) => {
     const cleanRole = selectedRole.trim() || 'Software Engineer';
@@ -134,7 +151,6 @@ export default function VideoInterviewPage() {
       setRecordedAnswers([]);
       setCurrentPlaybackUrl(null);
       setElapsedSeconds(0);
-
       setPhase('ready');
     } catch (err: unknown) {
       const message =
@@ -142,8 +158,7 @@ export default function VideoInterviewPage() {
           err as {
             response?: { data?: { detail?: string } };
           }
-        )?.response?.data?.detail ||
-        'Could not start video interview.';
+        )?.response?.data?.detail || 'Could not start video interview.';
 
       setError(message);
     } finally {
@@ -163,14 +178,12 @@ export default function VideoInterviewPage() {
       localStorage.getItem('selected_role') || 'Software Engineer';
 
     setRole(savedRole);
-
     startSession(savedRole);
-    setupCamera();
 
     return () => {
       cleanupCamera();
     };
-  }, [router, startSession, setupCamera, cleanupCamera]);
+  }, [router, startSession, cleanupCamera]);
 
   useEffect(() => {
     if (phase !== 'recording') return;
@@ -196,81 +209,166 @@ export default function VideoInterviewPage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   }
 
-  function startRecording() {
-    if (!mediaStreamRef.current || !currentQuestion) {
-      setError('Camera is not ready yet.');
+  function getSupportedMimeType() {
+    const possibleTypes = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm',
+      'video/mp4',
+    ];
+
+    return possibleTypes.find((type) => MediaRecorder.isTypeSupported(type));
+  }
+
+  function openVideoStorageDb() {
+    return new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('interviewpal-video-storage', 1);
+
+      request.onupgradeneeded = () => {
+        const db = request.result;
+
+        if (!db.objectStoreNames.contains('interviews')) {
+          db.createObjectStore('interviews', { keyPath: 'id' });
+        }
+      };
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async function saveCurrentInterviewToStorage() {
+    if (!session || recordedAnswers.length === 0) {
+      setSaveMessage('No recordings to save yet.');
       return;
     }
 
-    setError('');
+    setSaveMessage('Saving recordings...');
 
-    chunksRef.current = [];
+    try {
+      const db = await openVideoStorageDb();
 
-    setCurrentPlaybackUrl(null);
-    setElapsedSeconds(0);
+      const sortedAnswers = recordedAnswers
+        .slice()
+        .sort((a, b) => a.questionIndex - b.questionIndex);
 
-    recordingStartTimeRef.current = Date.now();
-
-    pausedStartedAtRef.current = null;
-    totalPausedMsRef.current = 0;
-
-    const recorder = new MediaRecorder(mediaStreamRef.current, {
-      mimeType: 'video/webm',
-    });
-
-    recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        chunksRef.current.push(event.data);
-      }
-    };
-
-    recorder.onstop = () => {
-      const durationMs =
-        recordingStartTimeRef.current !== null
-          ? Date.now() -
-            recordingStartTimeRef.current -
-            totalPausedMsRef.current
-          : 0;
-
-      const durationSeconds = Math.max(
-        0,
-        Math.floor(durationMs / 1000)
+      const totalDurationSeconds = sortedAnswers.reduce(
+        (sum, answer) => sum + answer.durationSeconds,
+        0
       );
 
-      const videoBlob = new Blob(chunksRef.current, {
-        type: 'video/webm',
+      const savedInterview = {
+        id: session.id,
+        role,
+        createdAt: new Date().toISOString(),
+        totalQuestions: session.questions.length,
+        answersRecorded: sortedAnswers.length,
+        totalDurationSeconds,
+        responses: sortedAnswers.map((answer) => ({
+          questionIndex: answer.questionIndex,
+          question: answer.question,
+          videoBlob: answer.videoBlob,
+          durationSeconds: answer.durationSeconds,
+        })),
+      };
+
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction('interviews', 'readwrite');
+        tx.objectStore('interviews').put(savedInterview);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
       });
 
-      const videoUrl = URL.createObjectURL(videoBlob);
+      db.close();
+      setSaveMessage('Saved to Storage. You can open the Storage page now.');
+    } catch (err) {
+      console.error(err);
+      setSaveMessage('Could not save recordings. Try shorter recordings.');
+    }
+  }
 
-      setCurrentPlaybackUrl(videoUrl);
+  async function startRecording() {
+    if (!currentQuestion) {
+      setError('No question is available.');
+      return;
+    }
 
-      setRecordedAnswers((prev) => {
-        const filtered = prev.filter(
-          (answer) => answer.questionIndex !== questionIndex
-        );
+    try {
+      setError('');
+      setSaveMessage('');
+      setCurrentPlaybackUrl(null);
+      setElapsedSeconds(0);
 
-        return [
-          ...filtered,
-          {
-            questionIndex,
-            question: currentQuestion.question,
-            videoBlob,
-            videoUrl,
-            durationSeconds,
-          },
-        ];
-      });
+      const stream = mediaStreamRef.current || (await setupCamera());
 
-      setElapsedSeconds(durationSeconds);
-      setPhase('review');
-    };
+      chunksRef.current = [];
+      recordingStartTimeRef.current = Date.now();
+      pausedStartedAtRef.current = null;
+      totalPausedMsRef.current = 0;
 
-    mediaRecorderRef.current = recorder;
+      const mimeType = getSupportedMimeType();
 
-    recorder.start();
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
 
-    setPhase('recording');
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const durationMs =
+          recordingStartTimeRef.current !== null
+            ? Date.now() -
+              recordingStartTimeRef.current -
+              totalPausedMsRef.current
+            : 0;
+
+        const durationSeconds = Math.max(0, Math.floor(durationMs / 1000));
+
+        const videoBlob = new Blob(chunksRef.current, {
+          type: mimeType || 'video/webm',
+        });
+
+        const videoUrl = URL.createObjectURL(videoBlob);
+
+        setCurrentPlaybackUrl(videoUrl);
+
+        setRecordedAnswers((prev) => {
+          const filtered = prev.filter(
+            (answer) => answer.questionIndex !== questionIndex
+          );
+
+          return [
+            ...filtered,
+            {
+              questionIndex,
+              question: currentQuestion.question,
+              videoBlob,
+              videoUrl,
+              durationSeconds,
+            },
+          ];
+        });
+
+        setElapsedSeconds(durationSeconds);
+        setPhase('review');
+
+        mediaRecorderRef.current = null;
+        stopCamera();
+      };
+
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setPhase('recording');
+    } catch {
+      setError(
+        'Could not access your camera or microphone. Please allow permissions and try again.'
+      );
+      stopCamera();
+    }
   }
 
   function pauseRecording() {
@@ -279,9 +377,7 @@ export default function VideoInterviewPage() {
     if (!recorder || recorder.state !== 'recording') return;
 
     recorder.pause();
-
     pausedStartedAtRef.current = Date.now();
-
     setPhase('paused');
   }
 
@@ -291,52 +387,52 @@ export default function VideoInterviewPage() {
     if (!recorder || recorder.state !== 'paused') return;
 
     if (pausedStartedAtRef.current !== null) {
-      totalPausedMsRef.current +=
-        Date.now() - pausedStartedAtRef.current;
-
+      totalPausedMsRef.current += Date.now() - pausedStartedAtRef.current;
       pausedStartedAtRef.current = null;
     }
 
     recorder.resume();
-
     setPhase('recording');
   }
 
   function stopRecording() {
     const recorder = mediaRecorderRef.current;
 
-    if (!recorder) return;
+    if (!recorder) {
+      stopCamera();
+      setPhase('review');
+      return;
+    }
 
-    if (
-      recorder.state === 'paused' &&
-      pausedStartedAtRef.current !== null
-    ) {
-      totalPausedMsRef.current +=
-        Date.now() - pausedStartedAtRef.current;
-
+    if (recorder.state === 'paused' && pausedStartedAtRef.current !== null) {
+      totalPausedMsRef.current += Date.now() - pausedStartedAtRef.current;
       pausedStartedAtRef.current = null;
     }
 
     if (recorder.state !== 'inactive') {
       recorder.stop();
     }
+
+    window.setTimeout(() => {
+      stopCamera();
+    }, 100);
   }
 
   function rerecordAnswer() {
+    stopCamera();
     setCurrentPlaybackUrl(null);
-
     setElapsedSeconds(0);
 
     setRecordedAnswers((prev) =>
-      prev.filter(
-        (answer) => answer.questionIndex !== questionIndex
-      )
+      prev.filter((answer) => answer.questionIndex !== questionIndex)
     );
 
     setPhase('ready');
   }
 
   function nextQuestion() {
+    stopCamera();
+
     if (!session) return;
 
     const next = questionIndex + 1;
@@ -347,16 +443,15 @@ export default function VideoInterviewPage() {
     }
 
     setQuestionIndex(next);
-
     setCurrentPlaybackUrl(null);
     setElapsedSeconds(0);
-
     setError('');
-
     setPhase('ready');
   }
 
   async function finishInterview() {
+    cleanupCamera();
+
     if (!session) {
       setPhase('done');
       return;
@@ -367,19 +462,16 @@ export default function VideoInterviewPage() {
     try {
       await api.post(`/api/interviews/${session.id}/end`);
     } catch {
-      // Ignore for now
+      // The local summary is still useful even if the backend request fails.
     } finally {
+      cleanupCamera();
       setLoading(false);
       setPhase('done');
     }
   }
 
   function endEarly() {
-    if (phase === 'recording' || phase === 'paused') {
-      stopRecording();
-      return;
-    }
-
+    cleanupCamera();
     finishInterview();
   }
 
@@ -396,158 +488,171 @@ export default function VideoInterviewPage() {
           </h1>
 
           <p className="text-[rgb(var(--muted-rgb))]">
-            Generating questions and setting up camera...
+            Generating questions...
           </p>
         </div>
       </main>
     );
   }
 
+  if (phase === 'done') {
+    const totalDurationSeconds = recordedAnswers.reduce(
+      (sum, answer) => sum + answer.durationSeconds,
+      0
+    );
 
-if (phase === 'done') {
-const totalDurationSeconds = recordedAnswers.reduce(
-    (sum, answer) => sum + answer.durationSeconds,
-    0
-);
+    const answeredCount = recordedAnswers.length;
+    const totalQuestionCount = session?.questions.length || answeredCount;
 
-const answeredCount = recordedAnswers.length;
-const totalQuestionCount = session?.questions.length || answeredCount;
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[rgb(var(--background-rgb))] p-8 text-[rgb(var(--foreground-rgb))]">
+        <div className="w-full max-w-4xl">
+          <div className="mb-8 text-center">
+            <div className="mb-4 text-6xl">🎥</div>
 
-return (
-    <main className="flex min-h-screen items-center justify-center bg-[rgb(var(--background-rgb))] p-8 text-[rgb(var(--foreground-rgb))]">
-    <div className="w-full max-w-4xl">
-        <div className="mb-8 text-center">
-        <div className="mb-4 text-6xl">🎥</div>
-
-        <p className="mb-2 text-sm font-semibold uppercase tracking-wider text-blue-500">
-            Video Interview Summary
-        </p>
-
-        <h1 className="mb-3 text-4xl font-extrabold">
-            Interview Complete
-        </h1>
-
-        <p className="text-[rgb(var(--muted-rgb))]">
-            You recorded {answeredCount} of {totalQuestionCount} answers for your{' '}
-            {role} interview.
-        </p>
-        </div>
-
-        <div className="mb-6 grid gap-4 md:grid-cols-3">
-        <div className="rounded-2xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] p-5 shadow-sm">
-            <p className="mb-1 text-sm text-[rgb(var(--muted-rgb))]">
-            Role
+            <p className="mb-2 text-sm font-semibold uppercase tracking-wider text-blue-500">
+              Video Interview Summary
             </p>
-            <p className="text-xl font-bold">{role}</p>
-        </div>
 
-        <div className="rounded-2xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] p-5 shadow-sm">
-            <p className="mb-1 text-sm text-[rgb(var(--muted-rgb))]">
-            Answers Recorded
-            </p>
-            <p className="text-xl font-bold">
-            {answeredCount}/{totalQuestionCount}
-            </p>
-        </div>
+            <h1 className="mb-3 text-4xl font-extrabold">
+              Interview Complete
+            </h1>
 
-        <div className="rounded-2xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] p-5 shadow-sm">
-            <p className="mb-1 text-sm text-[rgb(var(--muted-rgb))]">
-            Total Duration
+            <p className="text-[rgb(var(--muted-rgb))]">
+              You recorded {answeredCount} of {totalQuestionCount} answers for your{' '}
+              {role} interview.
             </p>
-            <p className="text-xl font-bold">
-            {formatTime(totalDurationSeconds)}
-            </p>
-        </div>
-        </div>
+          </div>
 
-        <section className="mb-6 rounded-3xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] p-6 shadow-xl">
-        <div className="mb-4 flex items-center justify-between">
-            <div>
-            <h2 className="text-xl font-bold">Recorded Responses</h2>
-            <p className="text-sm text-[rgb(var(--muted-rgb))]">
-                Review the answers saved during this browser session.
-            </p>
+          <div className="mb-6 grid gap-4 md:grid-cols-3">
+            <div className="rounded-2xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] p-5 shadow-sm">
+              <p className="mb-1 text-sm text-[rgb(var(--muted-rgb))]">
+                Role
+              </p>
+              <p className="text-xl font-bold">{role}</p>
             </div>
 
-            <span className="rounded-full bg-blue-500/10 px-3 py-1 text-xs font-bold text-blue-500">
-            Local Only
-            </span>
-        </div>
-
-        {recordedAnswers.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-[rgb(var(--border-rgb))] bg-[rgb(var(--background-rgb))] p-8 text-center">
-            <p className="font-semibold">No recordings saved</p>
-            <p className="mt-1 text-sm text-[rgb(var(--muted-rgb))]">
-                Start another video interview to record answers.
-            </p>
+            <div className="rounded-2xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] p-5 shadow-sm">
+              <p className="mb-1 text-sm text-[rgb(var(--muted-rgb))]">
+                Answers Recorded
+              </p>
+              <p className="text-xl font-bold">
+                {answeredCount}/{totalQuestionCount}
+              </p>
             </div>
-        ) : (
-            <div className="space-y-4">
-            {recordedAnswers.map((answer) => (
-                <div
-                key={answer.questionIndex}
-                className="grid gap-4 rounded-2xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--background-rgb))] p-4 md:grid-cols-[220px_1fr]"
-                >
-                <video
-                    src={answer.videoUrl}
-                    controls
-                    className="aspect-video w-full rounded-xl border border-[rgb(var(--border-rgb))] object-cover"
-                />
 
-                <div>
-                    <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-blue-500/10 px-3 py-1 text-xs font-bold text-blue-500">
-                        Question {answer.questionIndex + 1}
-                    </span>
+            <div className="rounded-2xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] p-5 shadow-sm">
+              <p className="mb-1 text-sm text-[rgb(var(--muted-rgb))]">
+                Total Duration
+              </p>
+              <p className="text-xl font-bold">
+                {formatTime(totalDurationSeconds)}
+              </p>
+            </div>
+          </div>
 
-                    <span className="rounded-full bg-[rgb(var(--card-rgb))] px-3 py-1 text-xs font-bold text-[rgb(var(--muted-rgb))]">
-                        {formatTime(answer.durationSeconds)}
-                    </span>
+          <section className="mb-6 rounded-3xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold">Recorded Responses</h2>
+                <p className="text-sm text-[rgb(var(--muted-rgb))]">
+                  Review the answers saved during this browser session.
+                </p>
+              </div>
+
+              <span className="rounded-full bg-blue-500/10 px-3 py-1 text-xs font-bold text-blue-500">
+                Local Preview
+              </span>
+            </div>
+
+            {recordedAnswers.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-[rgb(var(--border-rgb))] bg-[rgb(var(--background-rgb))] p-8 text-center">
+                <p className="font-semibold">No recordings saved</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {recordedAnswers
+                  .slice()
+                  .sort((a, b) => a.questionIndex - b.questionIndex)
+                  .map((answer) => (
+                    <div
+                      key={answer.questionIndex}
+                      className="grid gap-4 rounded-2xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--background-rgb))] p-4 md:grid-cols-[220px_1fr]"
+                    >
+                      <video
+                        src={answer.videoUrl}
+                        controls
+                        className="aspect-video w-full rounded-xl border border-[rgb(var(--border-rgb))] object-cover"
+                      />
+
+                      <div>
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-blue-500/10 px-3 py-1 text-xs font-bold text-blue-500">
+                            Question {answer.questionIndex + 1}
+                          </span>
+
+                          <span className="rounded-full bg-[rgb(var(--card-rgb))] px-3 py-1 text-xs font-bold text-[rgb(var(--muted-rgb))]">
+                            {formatTime(answer.durationSeconds)}
+                          </span>
+                        </div>
+
+                        <p className="font-semibold text-[rgb(var(--foreground-rgb))]">
+                          {answer.question}
+                        </p>
+                      </div>
                     </div>
+                  ))}
+              </div>
+            )}
+          </section>
 
-                    <p className="font-semibold text-[rgb(var(--foreground-rgb))]">
-                    {answer.question}
-                    </p>
+          <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-600">
+            <p className="font-bold">Storage note</p>
+            <p>
+              Click Save to Storage to keep these recordings in this browser.
+            </p>
+          </div>
 
-                    <p className="mt-2 text-sm text-[rgb(var(--muted-rgb))]">
-                    This recording is currently stored in browser memory. Backend
-                    upload/storage can be wired next.
-                    </p>
-                </div>
-                </div>
-            ))}
-            </div>
-        )}
-        </section>
+          <div className="mt-6 grid gap-3 md:grid-cols-3">
+            <button
+              onClick={saveCurrentInterviewToStorage}
+              className="rounded-xl bg-green-600 py-3 font-bold text-white transition hover:bg-green-500 active:scale-95"
+            >
+              Save to Storage
+            </button>
 
-        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-600">
-        <p className="font-bold">Storage note</p>
-        <p>
-            These videos are previewable right now, but they are not permanently
-            saved yet. Once the backend upload endpoint is added, this summary can
-            save videos and show them on the Storage page.
-        </p>
-        </div>
+            <button
+              onClick={() => router.push('/storage')}
+              className="rounded-xl bg-blue-600 py-3 font-bold text-white transition hover:bg-blue-500 active:scale-95"
+            >
+              Open Storage
+            </button>
 
-        <div className="mt-6 flex gap-3">
-        <button
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="rounded-xl border border-[rgb(var(--border-rgb))] py-3 font-bold text-[rgb(var(--foreground-rgb))] transition hover:bg-[rgb(var(--card-rgb))]"
+            >
+              Dashboard
+            </button>
+          </div>
+
+          {saveMessage && (
+            <p className="mt-4 rounded-xl border border-blue-500/20 bg-blue-500/10 p-3 text-center text-sm font-semibold text-blue-500">
+              {saveMessage}
+            </p>
+          )}
+
+          <button
             onClick={() => router.push('/interview')}
-            className="flex-1 rounded-xl bg-blue-600 py-3 font-bold text-white transition hover:bg-blue-500 active:scale-95"
-        >
+            className="mt-3 w-full rounded-xl border border-[rgb(var(--border-rgb))] py-3 font-bold text-[rgb(var(--foreground-rgb))] transition hover:bg-[rgb(var(--card-rgb))]"
+          >
             Practice Again
-        </button>
-
-        <button
-            onClick={() => router.push('/dashboard')}
-            className="flex-1 rounded-xl border border-[rgb(var(--border-rgb))] py-3 font-bold text-[rgb(var(--foreground-rgb))] transition hover:bg-[rgb(var(--card-rgb))]"
-        >
-            Dashboard
-        </button>
+          </button>
         </div>
-    </div>
-    </main>
-);
-}
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-[rgb(var(--background-rgb))] p-8 text-[rgb(var(--foreground-rgb))]">
       <div className="mx-auto max-w-6xl">
@@ -577,19 +682,13 @@ return (
         <div className="mb-6">
           <div className="mb-2 flex items-center justify-between text-sm">
             <span className="font-medium text-[rgb(var(--muted-rgb))]">
-              Question {questionIndex + 1} of{' '}
-              {session?.questions.length || 0}
+              Question {questionIndex + 1} of {session?.questions.length || 0}
             </span>
 
             <span className="font-medium text-blue-500">
-              {phase === 'recording' &&
-                `Recording ${formatTime(elapsedSeconds)}`}
-
-              {phase === 'paused' &&
-                `Paused at ${formatTime(elapsedSeconds)}`}
-
-              {phase === 'ready' && 'Ready'}
-
+              {phase === 'recording' && `Recording ${formatTime(elapsedSeconds)}`}
+              {phase === 'paused' && `Paused at ${formatTime(elapsedSeconds)}`}
+              {phase === 'ready' && 'Camera Off / Ready'}
               {phase === 'review' && 'Review Answer'}
             </span>
           </div>
@@ -611,12 +710,10 @@ return (
                 className={`rounded-full px-3 py-1 text-xs font-bold ${
                   cameraReady
                     ? 'bg-green-500/10 text-green-500'
-                    : 'bg-amber-500/10 text-amber-500'
+                    : 'bg-slate-500/10 text-slate-400'
                 }`}
               >
-                {cameraReady
-                  ? 'Camera Ready'
-                  : 'Waiting for Camera'}
+                {cameraReady ? 'Camera On' : 'Camera Off'}
               </span>
             </div>
 
@@ -629,12 +726,15 @@ return (
                 className="aspect-video w-full object-cover"
               />
 
-              {(phase === 'recording' ||
-                phase === 'paused') && (
+              {!cameraReady && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black text-sm font-semibold text-slate-400">
+                  Camera is off
+                </div>
+              )}
+
+              {(phase === 'recording' || phase === 'paused') && (
                 <div className="absolute left-4 top-4 rounded-full bg-red-500 px-3 py-1 text-xs font-bold text-white">
-                  {phase === 'paused'
-                    ? 'Paused'
-                    : 'Recording'}
+                  {phase === 'paused' ? 'Paused' : 'Recording'}
                 </div>
               )}
             </div>
@@ -688,8 +788,7 @@ return (
               {phase === 'ready' && (
                 <button
                   onClick={startRecording}
-                  disabled={!cameraReady}
-                  className="w-full rounded-xl bg-red-600 py-3 font-bold text-white transition hover:bg-red-500 disabled:opacity-50"
+                  className="w-full rounded-xl bg-red-600 py-3 font-bold text-white transition hover:bg-red-500"
                 >
                   Start Recording
                 </button>
@@ -737,8 +836,7 @@ return (
                     onClick={nextQuestion}
                     className="rounded-xl bg-blue-600 py-3 font-bold text-white transition hover:bg-blue-500"
                   >
-                    {questionIndex + 1 >=
-                    (session?.questions.length || 0)
+                    {questionIndex + 1 >= (session?.questions.length || 0)
                       ? 'Finish Interview'
                       : 'Next Question →'}
                   </button>
