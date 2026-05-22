@@ -2,379 +2,89 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import api from '@/lib/api';
-import { FeedbackResult, InterviewQuestion } from '@/types';
 
-type Phase = 'setup' | 'question' | 'feedback' | 'done';
+type InterviewMode = 'text' | 'video';
 
-interface SessionData {
-  id: string;
-  role: string;
-  questions: InterviewQuestion[];
-}
-
-export default function InterviewPage() {
+export default function InterviewSetupPage() {
   const router = useRouter();
-  const [phase, setPhase] = useState<Phase>('setup');
-  const [role, setRole] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  const [session, setSession] = useState<SessionData | null>(null);
-  const [experienceLevel, setExperienceLevel] = useState('Mid-Level');
-  const [difficulty, setDifficulty] = useState('Medium');
-  const [interviewFocus, setInterviewFocus] = useState('General');
-  const [questionIndex, setQuestionIndex] = useState(0);
-  const [answer, setAnswer] = useState('');
-  const [feedback, setFeedback] = useState<FeedbackResult | null>(null);
-  const [allFeedback, setAllFeedback] = useState<FeedbackResult[]>([]);
+  const [role, setRole] = useState('Software Engineer');
+  const [mode, setMode] = useState<InterviewMode>('text');
 
   useEffect(() => {
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-      router.replace('/auth');
-      return;
-    }
-
     const savedRole = localStorage.getItem('selected_role');
-    if (savedRole) {
-      setRole(savedRole);
-    }
-  }, [router]);
+    if (savedRole) setRole(savedRole);
+  }, []);
 
-  async function startSession() {
-    const cleanRole = role.trim();
-    if (!cleanRole) return;
+  function startInterview() {
+    localStorage.setItem('selected_role', role);
+    localStorage.setItem('selected_interview_mode', mode);
 
-    setLoading(true);
-    setError('');
-    try {
-      localStorage.setItem('selected_role', cleanRole);
-      const res = await api.post('/api/interviews/start', {
-        role: cleanRole,
-        experience_level: experienceLevel,
-        difficulty: difficulty,
-        interview_focus: interviewFocus,
-      });
-      const questions = Array.isArray(res.data.questions) ? res.data.questions : [];
-
-      if (questions.length === 0) {
-        setError('No questions were generated. Please try another role.');
-        return;
-      }
-
-      setSession({ id: res.data.id, role: res.data.role, questions });
-      setQuestionIndex(0);
-      setAnswer('');
-      setFeedback(null);
-      setAllFeedback([]);
-      setPhase('question');
-    } catch (err: unknown) {
-      const message =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-        'Could not start session. Make sure you are signed in and the backend is running.';
-      setError(message);
-    } finally {
-      setLoading(false);
+    if (mode === 'video') {
+      router.push('/interview/video');
+    } else {
+      router.push('/interview/text');
     }
   }
 
-  async function submitAnswer() {
-    if (!answer.trim() || !session) return;
+  return (
+    <main className="min-h-screen bg-[rgb(var(--background-rgb))] p-8 text-[rgb(var(--foreground-rgb))]">
+      <div className="mx-auto max-w-3xl rounded-3xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] p-10 shadow-xl">
+        <p className="mb-3 text-sm font-bold uppercase tracking-widest text-blue-500">
+          Interview Setup
+        </p>
 
-    setLoading(true);
-    setError('');
-    try {
-      const currentQ = session.questions[questionIndex];
-      const res = await api.post(`/api/interviews/${session.id}/answer`, {
-        question: currentQ.question,
-        answer: answer.trim(),
-      });
-      setFeedback(res.data.feedback);
-      setAllFeedback((prev) => [...prev, res.data.feedback]);
-      setPhase('feedback');
-    } catch (err: unknown) {
-      const message =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-        'Failed to submit answer. Please try again.';
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  }
+        <h1 className="mb-4 text-4xl font-extrabold">Start Interview</h1>
 
-  async function nextQuestion() {
-    if (!session) return;
+        <p className="mb-8 text-[rgb(var(--muted-rgb))]">
+          Choose your role and interview format before starting your session.
+        </p>
 
-    const next = questionIndex + 1;
-    if (next >= session.questions.length) {
-      await endSession();
-      return;
-    }
+        <label className="mb-2 block text-sm font-semibold">Role</label>
+        <input
+          value={role}
+          onChange={(e) => setRole(e.target.value)}
+          className="mb-8 w-full rounded-xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--background-rgb))] px-4 py-4 text-[rgb(var(--foreground-rgb))] outline-none focus:ring-2 focus:ring-blue-500"
+        />
 
-    setQuestionIndex(next);
-    setAnswer('');
-    setFeedback(null);
-    setError('');
-    setPhase('question');
-  }
+        <label className="mb-3 block text-sm font-semibold">Interview Type</label>
 
-  async function endSession() {
-    if (!session) return;
-
-    setLoading(true);
-    try {
-      await api.post(`/api/interviews/${session.id}/end`);
-    } catch {
-      // The local summary is still useful even if the end-session request fails.
-    } finally {
-      setLoading(false);
-      setPhase('done');
-    }
-  }
-
-  const avgScore =
-    allFeedback.length > 0
-      ? Math.round(allFeedback.reduce((sum, item) => sum + item.score, 0) / allFeedback.length)
-      : 0;
-
-  if (phase === 'setup') {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[rgb(var(--background-rgb))] p-8 text-[rgb(var(--foreground-rgb))]">
-        <div className="w-full max-w-md rounded-3xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] p-8 shadow-xl">
-          <p className="mb-2 text-sm font-semibold uppercase tracking-wider text-blue-300">Interview setup</p>
-          <h1 className="mb-3 text-3xl font-extrabold text-[rgb(var(--foreground-rgb))]">Start Interview</h1>
-          <p className="mb-8 text-[rgb(var(--muted-rgb))]">
-            Enter or confirm the role. The backend will generate role-specific questions for this session.
-          </p>
-
-          <input
-            type="text"
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && startSession()}
-            placeholder="e.g. Software Engineer, Product Manager"
-            className="mb-4 w-full rounded-xl border border-slate-700 bg-[rgb(var(--background-rgb))] px-4 py-3 text-sm text-[rgb(var(--foreground-rgb))] outline-none focus:ring-2 focus:ring-blue-500"
-          />
-
-          <div className="mb-6 grid grid-cols-1 gap-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-[rgb(var(--muted-rgb))]">Experience Level</label>
-              <select
-                value={experienceLevel}
-                onChange={(e) => setExperienceLevel(e.target.value)}
-                className="w-full rounded-xl border border-slate-700 bg-[rgb(var(--background-rgb))] px-4 py-2 text-sm text-[rgb(var(--foreground-rgb))] outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option>Junior</option>
-                <option>Mid-Level</option>
-                <option>Senior</option>
-                <option>Lead</option>
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-[rgb(var(--muted-rgb))]">Difficulty</label>
-              <select
-                value={difficulty}
-                onChange={(e) => setDifficulty(e.target.value)}
-                className="w-full rounded-xl border border-slate-700 bg-[rgb(var(--background-rgb))] px-4 py-2 text-sm text-[rgb(var(--foreground-rgb))] outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option>Easy</option>
-                <option>Medium</option>
-                <option>Hard</option>
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-[rgb(var(--muted-rgb))]">Interview Focus</label>
-              <select
-                value={interviewFocus}
-                onChange={(e) => setInterviewFocus(e.target.value)}
-                className="w-full rounded-xl border border-slate-700 bg-[rgb(var(--background-rgb))] px-4 py-2 text-sm text-[rgb(var(--foreground-rgb))] outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option>General</option>
-                <option>Technical</option>
-                <option>Behavioral</option>
-              </select>
-            </div>
-          </div>
-
-          {loading && (
-            <div className="mb-4 rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">
-              Generating questions... This usually takes a few seconds.
-            </div>
-          )}
-
-          {error && (
-            <p className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-              {error}
+        <div className="mb-8 grid gap-4 md:grid-cols-2">
+          <button
+            onClick={() => setMode('text')}
+            className={`rounded-2xl border p-5 text-left transition ${
+              mode === 'text'
+                ? 'border-blue-500 bg-blue-500/10'
+                : 'border-[rgb(var(--border-rgb))] bg-[rgb(var(--background-rgb))]'
+            }`}
+          >
+            <h2 className="mb-1 text-lg font-bold">Text Interview</h2>
+            <p className="text-sm text-[rgb(var(--muted-rgb))]">
+              Answer questions by typing responses.
             </p>
-          )}
+          </button>
 
           <button
-            onClick={startSession}
-            disabled={loading || !role.trim()}
-            className="w-full rounded-xl bg-blue-600 py-3 font-bold text-[rgb(var(--foreground-rgb))] transition hover:bg-blue-500 disabled:opacity-60 active:scale-95"
+            onClick={() => setMode('video')}
+            className={`rounded-2xl border p-5 text-left transition ${
+              mode === 'video'
+                ? 'border-blue-500 bg-blue-500/10'
+                : 'border-[rgb(var(--border-rgb))] bg-[rgb(var(--background-rgb))]'
+            }`}
           >
-            {loading ? 'Generating questions…' : 'Start →'}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (phase === 'question' && session) {
-    const currentQuestion = session.questions[questionIndex];
-    const progress = ((questionIndex + 1) / session.questions.length) * 100;
-
-    return (
-      <div className="min-h-screen bg-[rgb(var(--background-rgb))] p-8 text-[rgb(var(--foreground-rgb))]">
-        <div className="mx-auto max-w-2xl">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-sm font-medium text-[rgb(var(--muted-rgb))]">
-              Question {questionIndex + 1} of {session.questions.length}
-            </span>
-            <span className="text-sm text-blue-300">{session.role}</span>
-          </div>
-          <div className="mb-8 h-2 w-full rounded-full bg-slate-800">
-            <div className="h-2 rounded-full bg-blue-600 transition-all" style={{ width: `${progress}%` }} />
-          </div>
-
-          <div className="mb-6 rounded-2xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] p-6 shadow-sm">
-            <div className="mb-4 flex gap-2">
-              <span className="rounded-full bg-blue-500/10 px-2 py-1 text-xs font-semibold capitalize text-blue-300">
-                {currentQuestion.category}
-              </span>
-              <span className="rounded-full bg-slate-800 px-2 py-1 text-xs font-semibold capitalize text-slate-300">
-                {currentQuestion.difficulty}
-              </span>
-            </div>
-            <p className="text-lg font-semibold text-[rgb(var(--foreground-rgb))]">{currentQuestion.question}</p>
-          </div>
-
-          <textarea
-            value={answer}
-            onChange={(e) => setAnswer(e.target.value)}
-            placeholder="Type your answer here…"
-            rows={6}
-            className="mb-4 w-full resize-none rounded-xl border border-slate-700 bg-[rgb(var(--card-rgb))] px-4 py-3 text-sm text-[rgb(var(--foreground-rgb))] outline-none focus:ring-2 focus:ring-blue-500"
-          />
-
-          {error && <p className="mb-4 rounded-xl bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
-
-          <div className="flex gap-3">
-            <button
-              onClick={submitAnswer}
-              disabled={loading || !answer.trim()}
-              className="flex-1 rounded-xl bg-blue-600 py-3 font-bold text-[rgb(var(--foreground-rgb))] transition hover:bg-blue-500 disabled:opacity-60 active:scale-95"
-            >
-              {loading ? 'Analyzing…' : 'Submit Answer'}
-            </button>
-            <button
-              onClick={endSession}
-              className="rounded-xl border border-slate-700 px-5 py-3 text-sm font-medium text-slate-300 transition hover:bg-[rgb(var(--card-rgb))]"
-            >
-              End Early
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (phase === 'feedback' && feedback && session) {
-    const currentQuestion = session.questions[questionIndex];
-    const isLast = questionIndex + 1 >= session.questions.length;
-
-    return (
-      <div className="min-h-screen bg-[rgb(var(--background-rgb))] p-8 text-[rgb(var(--foreground-rgb))]">
-        <div className="mx-auto max-w-2xl">
-          <h2 className="mb-1 text-2xl font-extrabold text-[rgb(var(--foreground-rgb))]">Answer Feedback</h2>
-          <p className="mb-6 text-sm text-[rgb(var(--muted-rgb))]">Question {questionIndex + 1} of {session.questions.length}</p>
-
-          <div className="mb-4 flex items-center gap-6 rounded-2xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] p-6 shadow-sm">
-            <div className="text-5xl font-extrabold text-blue-400">
-              {feedback.score}<span className="text-2xl text-slate-600">/10</span>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-[rgb(var(--muted-rgb))]">Your question</p>
-              <p className="text-sm text-slate-200">{currentQuestion.question}</p>
-            </div>
-          </div>
-
-          <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="rounded-xl border border-green-500/20 bg-green-500/10 p-4">
-              <h3 className="mb-2 text-sm font-bold text-green-300">Strengths</h3>
-              <ul className="space-y-1">
-                {feedback.strengths.map((item, i) => <li key={i} className="text-sm text-green-100">• {item}</li>)}
-              </ul>
-            </div>
-            <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-4">
-              <h3 className="mb-2 text-sm font-bold text-amber-300">Areas to Improve</h3>
-              <ul className="space-y-1">
-                {feedback.improvements.map((item, i) => <li key={i} className="text-sm text-amber-100">• {item}</li>)}
-              </ul>
-            </div>
-          </div>
-
-          {feedback.filler_words.length > 0 && (
-            <div className="mb-4 rounded-xl border border-slate-700 bg-[rgb(var(--card-rgb))] p-4">
-              <h3 className="mb-1 text-sm font-bold text-slate-300">Filler words detected</h3>
-              <p className="text-sm text-[rgb(var(--muted-rgb))]">{feedback.filler_words.join(', ')}</p>
-            </div>
-          )}
-
-          <button
-            onClick={nextQuestion}
-            disabled={loading}
-            className="mt-2 w-full rounded-xl bg-blue-600 py-3 font-bold text-[rgb(var(--foreground-rgb))] transition hover:bg-blue-500 disabled:opacity-60 active:scale-95"
-          >
-            {loading ? 'Loading…' : isLast ? 'Finish Interview' : 'Next Question →'}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (phase === 'done') {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[rgb(var(--background-rgb))] p-8 text-[rgb(var(--foreground-rgb))]">
-        <div className="w-full max-w-md text-center">
-          <div className="mb-4 text-6xl">🎉</div>
-          <h1 className="mb-2 text-3xl font-extrabold text-[rgb(var(--foreground-rgb))]">Interview Complete!</h1>
-          <p className="mb-8 text-[rgb(var(--muted-rgb))]">Great job practicing. Here is your local summary.</p>
-
-          <div className="mb-6 rounded-2xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] p-6 text-left shadow-sm">
-            <p className="mb-1 text-sm text-[rgb(var(--muted-rgb))]">Average Score</p>
-            <p className="mb-4 text-5xl font-extrabold text-blue-400">
-              {avgScore}<span className="text-2xl text-slate-600">/10</span>
+            <h2 className="mb-1 text-lg font-bold">Video Interview</h2>
+            <p className="text-sm text-[rgb(var(--muted-rgb))]">
+              Record video responses with your camera and microphone.
             </p>
-            <p className="text-sm text-[rgb(var(--muted-rgb))]">{allFeedback.length} questions answered</p>
-          </div>
-
-          <div className="flex gap-3">
-            <button
-              onClick={() => {
-                setPhase('setup');
-                setSession(null);
-                setQuestionIndex(0);
-                setAnswer('');
-                setFeedback(null);
-                setAllFeedback([]);
-              }}
-              className="flex-1 rounded-xl bg-blue-600 py-3 font-bold text-[rgb(var(--foreground-rgb))] transition hover:bg-blue-500 active:scale-95"
-            >
-              Practice Again
-            </button>
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="flex-1 rounded-xl border border-slate-700 py-3 font-bold text-slate-300 transition hover:bg-[rgb(var(--card-rgb))]"
-            >
-              Dashboard
-            </button>
-          </div>
+          </button>
         </div>
-      </div>
-    );
-  }
 
-  return null;
+        <button
+          onClick={startInterview}
+          className="w-full rounded-xl bg-blue-600 px-8 py-4 text-lg font-bold text-white shadow-lg transition hover:bg-blue-500 active:scale-95"
+        >
+          Start {mode === 'video' ? 'Video' : 'Text'} Interview →
+        </button>
+      </div>
+    </main>
+  );
 }
