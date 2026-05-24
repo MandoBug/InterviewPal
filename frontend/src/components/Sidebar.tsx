@@ -1,6 +1,6 @@
 'use client';
 
-import { Home, User, Video, Settings, LogOut, FolderOpen } from 'lucide-react';
+import { Home, User, Video, LogOut, FolderOpen } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -9,10 +9,9 @@ export default function Sidebar() {
 
   const navItems = [
     { icon: <Home size={24} />, href: '/dashboard' },
-    { icon: <User size={24} />, href: '#' },
     { icon: <Video size={24} />, href: '/interview' },
     { icon: <FolderOpen size={24} />, href: '/storage' },
-    { icon: <Settings size={24} />, href: '/settings' },
+    { icon: <User size={24} />, href: '/profile' },
   ];
 
   function handleLogout() {

@@ -26,6 +26,7 @@ class InterviewSession(Base):
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
     role: Mapped[str] = mapped_column(String(255), nullable=False)
+    interview_type: Mapped[str] = mapped_column(String(50), default="text", nullable=False)
     status: Mapped[SessionStatus] = mapped_column(
         SAEnum(SessionStatus), default=SessionStatus.IN_PROGRESS
     )

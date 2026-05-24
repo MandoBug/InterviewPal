@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from uuid import UUID
 from datetime import datetime
 
@@ -14,6 +14,11 @@ class UserCreate(BaseModel):
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+
+
+class UserUpdate(BaseModel):
+    email: EmailStr
+    full_name: str = Field(..., min_length=1, max_length=255)
 
 
 # ── Response Schemas ──
