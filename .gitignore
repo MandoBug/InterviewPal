@@ -63,6 +63,7 @@ Thumbs.db
 Desktop.ini
 
 # IDE / editor local settings
+.claude/
 .vscode/*
 !.vscode/extensions.json
 !.vscode/launch.json
