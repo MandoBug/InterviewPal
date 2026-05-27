@@ -39,6 +39,7 @@ export default function TextInterviewPage() {
 
       const res = await api.post('/api/interviews/start', {
         role: cleanRole,
+        interview_type: 'text',
       });
 
       const questions = Array.isArray(res.data.questions) ? res.data.questions : [];

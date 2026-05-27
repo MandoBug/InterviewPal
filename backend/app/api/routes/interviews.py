@@ -1,8 +1,9 @@
+import json
 from uuid import UUID
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -11,7 +12,9 @@ from app.models.interview import InterviewSession, SessionStatus
 from app.schemas.interview import (
     StartInterviewRequest,
     SubmitAnswerRequest,
+    InterviewProgressPoint,
     InterviewSessionResponse,
+    InterviewStatsResponse,
     InterviewQuestion,
 )
 from app.services.ai_service import generate_interview_questions, generate_feedback
@@ -28,6 +31,7 @@ async def start_interview(
     session = InterviewSession(
         user_id=current_user["user_id"],
         role=payload.role.strip(),
+        interview_type=payload.interview_type,
     )
     db.add(session)
     await db.flush()
@@ -44,6 +48,7 @@ async def start_interview(
         id=session.id,
         user_id=session.user_id,
         role=session.role,
+        interview_type=session.interview_type,
         status=session.status,
         score=session.score,
         feedback=session.feedback,
@@ -51,6 +56,77 @@ async def start_interview(
         completed_at=session.completed_at,
         questions=[InterviewQuestion(**q) for q in questions],
     )
+
+
+@router.get("/stats", response_model=InterviewStatsResponse)
+async def get_interview_stats(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    user_id = UUID(current_user["user_id"])
+    completed_filter = (
+        InterviewSession.user_id == user_id,
+        InterviewSession.status == SessionStatus.COMPLETED,
+    )
+
+    total_completed_result = await db.execute(
+        select(func.count()).select_from(InterviewSession).where(*completed_filter)
+    )
+
+    average_text_result = await db.execute(
+        select(func.avg(InterviewSession.score)).where(
+            *completed_filter,
+            InterviewSession.interview_type == "text",
+            InterviewSession.score.is_not(None),
+        )
+    )
+
+    average_video_result = await db.execute(
+        select(func.avg(InterviewSession.score)).where(
+            *completed_filter,
+            InterviewSession.interview_type == "video",
+            InterviewSession.score.is_not(None),
+        )
+    )
+
+    most_role_result = await db.execute(
+        select(InterviewSession.role, func.count(InterviewSession.id).label("role_count"))
+        .where(*completed_filter)
+        .group_by(InterviewSession.role)
+        .order_by(desc("role_count"), InterviewSession.role)
+        .limit(1)
+    )
+
+    average_text = average_text_result.scalar_one_or_none()
+    average_video = average_video_result.scalar_one_or_none()
+    most_role = most_role_result.first()
+
+    return InterviewStatsResponse(
+        total_completed=total_completed_result.scalar_one(),
+        average_text_score=round(average_text) if average_text is not None else None,
+        average_video_score=round(average_video) if average_video is not None else None,
+        most_interviewed_role=most_role[0] if most_role else None,
+    )
+
+
+@router.get("/progress", response_model=list[InterviewProgressPoint])
+async def get_interview_progress(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    user_id = UUID(current_user["user_id"])
+    result = await db.execute(
+        select(InterviewSession)
+        .where(
+            InterviewSession.user_id == user_id,
+            InterviewSession.status == SessionStatus.COMPLETED,
+            InterviewSession.score.is_not(None),
+            InterviewSession.completed_at.is_not(None),
+        )
+        .order_by(InterviewSession.completed_at.asc())
+    )
+
+    return result.scalars().all()
 
 
 @router.get("/{session_id}", response_model=InterviewSessionResponse)
@@ -88,6 +164,29 @@ async def submit_answer(
         raise HTTPException(status_code=400, detail="Session is not in progress")
 
     feedback = await generate_feedback(session.role, payload.question, payload.answer)
+
+    previous_feedback: list[dict] = []
+    if session.feedback:
+        try:
+            loaded_feedback = json.loads(session.feedback)
+            if isinstance(loaded_feedback, list):
+                previous_feedback = [
+                    item for item in loaded_feedback if isinstance(item, dict)
+                ]
+        except json.JSONDecodeError:
+            previous_feedback = []
+
+    previous_feedback.append(feedback)
+    session.feedback = json.dumps(previous_feedback)
+
+    scores = [
+        int(item["score"])
+        for item in previous_feedback
+        if isinstance(item.get("score"), int)
+    ]
+    if scores:
+        session.score = round(sum(scores) / len(scores))
+
     return {"feedback": feedback}
 
 

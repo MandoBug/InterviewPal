@@ -19,6 +19,7 @@ export interface InterviewSession {
   id: string;
   user_id: string;
   role: string;
+  interview_type: string;
   status: SessionStatus;
   score: number | null;
   feedback: string | null;
@@ -38,4 +39,19 @@ export interface FeedbackResult {
   strengths: string[];
   improvements: string[];
   filler_words: string[];
+}
+
+export interface InterviewStats {
+  total_completed: number;
+  average_text_score: number | null;
+  average_video_score: number | null;
+  most_interviewed_role: string | null;
+}
+
+export interface InterviewProgressPoint {
+  id: string;
+  role: string;
+  interview_type: string;
+  score: number;
+  completed_at: string;
 }

@@ -130,6 +130,7 @@ export default function VideoInterviewPage() {
 
       const res = await api.post('/api/interviews/start', {
         role: cleanRole,
+        interview_type: 'video',
       });
 
       const questions = Array.isArray(res.data.questions)
