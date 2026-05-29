@@ -12,21 +12,27 @@ _VALID_CATEGORIES = {"behavioral", "technical", "situational"}
 _VALID_DIFFICULTIES = {"easy", "medium", "hard"}
 
 
-def _fallback_questions(role: str, num_questions: int = 5) -> list[dict[str, str]]:
+def _fallback_questions(
+    role: str,
+    experience_level: str = "Mid-Level",
+    difficulty: str = "Medium",
+    num_questions: int = 5,
+) -> list[dict[str, str]]:
     clean_role = role.strip() or "this role"
+    level_prefix = f"as a {experience_level.lower()} " if experience_level else ""
     return [
         {
-            "question": f"Tell me about yourself and why you are interested in a {clean_role} position.",
+            "question": f"Tell me about yourself and why you are interested in a {clean_role} position {level_prefix.strip()}.",
             "category": "behavioral",
             "difficulty": "easy",
         },
         {
-            "question": f"Describe a project or experience that prepared you for a {clean_role} role.",
+            "question": f"Describe a project or experience that prepared you for a {experience_level} {clean_role} role.",
             "category": "behavioral",
             "difficulty": "medium",
         },
         {
-            "question": f"What technical skills are most important for a {clean_role}, and how have you used them?",
+            "question": f"What technical skills are most important for a {experience_level} {clean_role}, and how have you used them?",
             "category": "technical",
             "difficulty": "medium",
         },
@@ -36,7 +42,7 @@ def _fallback_questions(role: str, num_questions: int = 5) -> list[dict[str, str
             "difficulty": "medium",
         },
         {
-            "question": f"Imagine you are given an unclear task as a {clean_role}. How would you clarify requirements and move forward?",
+            "question": f"Imagine you are given an unclear task as a {experience_level} {clean_role}. How would you clarify requirements and move forward?",
             "category": "situational",
             "difficulty": "hard",
         },
@@ -64,9 +70,15 @@ def _extract_json(text: str) -> Any:
     return json.loads(text)
 
 
-def _normalize_questions(raw: Any, role: str, num_questions: int) -> list[dict[str, str]]:
+def _normalize_questions(
+    raw: Any,
+    role: str,
+    experience_level: str = "Mid-Level",
+    difficulty: str = "Medium",
+    num_questions: int = 5,
+) -> list[dict[str, str]]:
     if not isinstance(raw, list):
-        return _fallback_questions(role, num_questions)
+        return _fallback_questions(role, experience_level, difficulty, num_questions)
 
     questions: list[dict[str, str]] = []
     for item in raw:
@@ -74,20 +86,20 @@ def _normalize_questions(raw: Any, role: str, num_questions: int) -> list[dict[s
             continue
         question = str(item.get("question", "")).strip()
         category = str(item.get("category", "behavioral")).strip().lower()
-        difficulty = str(item.get("difficulty", "medium")).strip().lower()
+        difficulty_item = str(item.get("difficulty", "medium")).strip().lower()
 
         if not question:
             continue
         if category not in _VALID_CATEGORIES:
             category = "behavioral"
-        if difficulty not in _VALID_DIFFICULTIES:
-            difficulty = "medium"
+        if difficulty_item not in _VALID_DIFFICULTIES:
+            difficulty_item = "medium"
 
         questions.append(
-            {"question": question, "category": category, "difficulty": difficulty}
+            {"question": question, "category": category, "difficulty": difficulty_item}
         )
 
-    return questions[:num_questions] or _fallback_questions(role, num_questions)
+    return questions[:num_questions] or _fallback_questions(role, experience_level, difficulty, num_questions)
 
 
 def _normalize_feedback(raw: Any, response_text: str) -> dict[str, Any]:
@@ -141,7 +153,7 @@ async def generate_interview_questions(
 ) -> list[dict[str, str]]:
     role = role.strip()
     if not _has_real_anthropic_key():
-        return _fallback_questions(role, num_questions)
+        return _fallback_questions(role, experience_level, difficulty, num_questions)
 
     prompt = f"""Generate {num_questions} mock interview questions for a {role} position.
 
@@ -164,9 +176,15 @@ Return ONLY a JSON array with no extra text. Each object must have exactly these
             messages=[{"role": "user", "content": prompt}],
         )
         text = getattr(message.content[0], "text", "")
-        return _normalize_questions(_extract_json(text), role, num_questions)
+        return _normalize_questions(
+            _extract_json(text),
+            role,
+            experience_level=experience_level,
+            difficulty=difficulty,
+            num_questions=num_questions,
+        )
     except Exception:
-        return _fallback_questions(role, num_questions)
+        return _fallback_questions(role, experience_level, difficulty, num_questions)
 
 
 async def generate_feedback(role: str, question: str, response_text: str) -> dict[str, Any]:

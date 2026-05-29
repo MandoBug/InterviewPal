@@ -8,15 +8,20 @@ type InterviewMode = 'text' | 'video';
 export default function InterviewSetupPage() {
   const router = useRouter();
   const [role, setRole] = useState('Software Engineer');
+  const [level, setLevel] = useState<'Intern' | 'Junior' | 'Senior'>('Junior');
   const [mode, setMode] = useState<InterviewMode>('text');
 
   useEffect(() => {
     const savedRole = localStorage.getItem('selected_role');
     if (savedRole) setRole(savedRole);
+
+    const savedLevel = localStorage.getItem('selected_level') as 'Intern' | 'Junior' | 'Senior' | null;
+    if (savedLevel) setLevel(savedLevel);
   }, []);
 
   function startInterview() {
     localStorage.setItem('selected_role', role);
+    localStorage.setItem('selected_level', level);
     localStorage.setItem('selected_interview_mode', mode);
 
     if (mode === 'video') {
@@ -36,15 +41,31 @@ export default function InterviewSetupPage() {
         <h1 className="mb-4 text-4xl font-extrabold">Start Interview</h1>
 
         <p className="mb-8 text-[rgb(var(--muted-rgb))]">
-          Choose your role and interview format before starting your session.
+          Choose your role, level, and interview format before starting your session.
         </p>
 
         <label className="mb-2 block text-sm font-semibold">Role</label>
         <input
           value={role}
           onChange={(e) => setRole(e.target.value)}
-          className="mb-8 w-full rounded-xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--background-rgb))] px-4 py-4 text-[rgb(var(--foreground-rgb))] outline-none focus:ring-2 focus:ring-blue-500"
+          className="mb-6 w-full rounded-xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--background-rgb))] px-4 py-4 text-[rgb(var(--foreground-rgb))] outline-none focus:ring-2 focus:ring-blue-500"
         />
+
+        <label className="mb-2 block text-sm font-semibold">Interview Level</label>
+        <div className="relative mb-8 w-full">
+          <select
+            value={level}
+            onChange={(e) => setLevel(e.target.value as 'Intern' | 'Junior' | 'Senior')}
+            className="w-full appearance-none rounded-xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--background-rgb))] px-4 py-4 pr-12 text-[rgb(var(--foreground-rgb))] outline-none transition focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="Intern">Intern (Easy questions)</option>
+            <option value="Junior">Junior (Medium questions)</option>
+            <option value="Senior">Senior (Hard questions)</option>
+          </select>
+          <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[rgb(var(--muted-rgb))]">
+            ▼
+          </div>
+        </div>
 
         <label className="mb-3 block text-sm font-semibold">Interview Type</label>
 

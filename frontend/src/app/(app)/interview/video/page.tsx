@@ -128,9 +128,25 @@ export default function VideoInterviewPage() {
     try {
       localStorage.setItem('selected_role', cleanRole);
 
+      const savedLevel = localStorage.getItem('selected_level') || 'Junior';
+      let experience_level = 'Mid-Level';
+      let difficulty = 'Medium';
+      if (savedLevel === 'Intern') {
+        experience_level = 'Intern';
+        difficulty = 'Easy';
+      } else if (savedLevel === 'Junior') {
+        experience_level = 'Junior';
+        difficulty = 'Medium';
+      } else if (savedLevel === 'Senior') {
+        experience_level = 'Senior';
+        difficulty = 'Hard';
+      }
+
       const res = await api.post('/api/interviews/start', {
         role: cleanRole,
         interview_type: 'video',
+        experience_level,
+        difficulty,
       });
 
       const questions = Array.isArray(res.data.questions)
