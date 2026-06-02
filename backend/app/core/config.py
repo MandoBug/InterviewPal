@@ -26,6 +26,15 @@ class Settings(BaseSettings):
     aws_s3_bucket: str = "interviewpal-recordings"
     aws_region: str = "us-west-2"
 
+    # Email
+    mail_username: str = ""
+    mail_password: str = ""
+    mail_from: str = "noreply@interviewpal.app"
+    mail_from_name: str = "InterviewPal"
+    mail_server: str = "smtp.gmail.com"
+    mail_port: int = 587
+    mail_enabled: bool = False
+
     # JWT
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30

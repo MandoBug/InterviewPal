@@ -18,6 +18,8 @@ from app.schemas.interview import (
     InterviewQuestion,
 )
 from app.services.ai_service import generate_interview_questions, generate_feedback
+from app.services.email_service import send_session_summary
+from app.models.user import User
 
 router = APIRouter(prefix="/interviews", tags=["Interviews"])
 
@@ -208,5 +210,18 @@ async def end_interview(
     session.completed_at = datetime.now(timezone.utc)
     await db.flush()
     await db.refresh(session)
+
+    # Send summary email — fire and forget, don't block the response
+    user_result = await db.execute(select(User).where(User.id == session.user_id))
+    user = user_result.scalar_one_or_none()
+    if user:
+        await send_session_summary(
+            to_email=user.email,
+            full_name=user.full_name,
+            role=session.role,
+            interview_type=session.interview_type,
+            score=session.score,
+            feedback_json=session.feedback,
+        )
 
     return session
