@@ -51,6 +51,7 @@ export default function StoragePage() {
   const [savedInterviews, setSavedInterviews] = useState<SavedInterview[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [videoUrls, setVideoUrls] = useState<Record<string, string>>({});
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   async function loadSavedInterviews() {
     const db = await openVideoStorageDb();
@@ -82,6 +83,40 @@ export default function StoragePage() {
     setSavedInterviews(sorted);
     setVideoUrls(urls);
     setOpenId(sorted[0]?.id || null);
+  }
+
+  async function deleteInterview(id: string) {
+    const db = await openVideoStorageDb();
+
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('interviews', 'readwrite');
+      tx.objectStore('interviews').delete(id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+
+    db.close();
+
+    // Revoke object URLs for this interview
+    savedInterviews
+      .find((i) => i.id === id)
+      ?.responses.forEach((r) => {
+        const key = `${id}-${r.questionIndex}`;
+        if (videoUrls[key]) URL.revokeObjectURL(videoUrls[key]);
+      });
+
+    setVideoUrls((prev) => {
+      const updated = { ...prev };
+      Object.keys(updated).forEach((k) => {
+        if (k.startsWith(id)) delete updated[k];
+      });
+      return updated;
+    });
+
+    const remaining = savedInterviews.filter((i) => i.id !== id);
+    setSavedInterviews(remaining);
+    setConfirmDeleteId(null);
+    if (openId === id) setOpenId(remaining[0]?.id || null);
   }
 
   async function clearStorage() {
@@ -185,12 +220,39 @@ export default function StoragePage() {
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => setOpenId(isOpen ? null : interview.id)}
-                      className="rounded-xl bg-blue-600 px-6 py-3 font-bold text-white transition hover:bg-blue-500"
-                    >
-                      {isOpen ? 'Close' : 'Open'}
-                    </button>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setOpenId(isOpen ? null : interview.id)}
+                        className="rounded-xl bg-blue-600 px-6 py-3 font-bold text-white transition hover:bg-blue-500"
+                      >
+                        {isOpen ? 'Close' : 'Open'}
+                      </button>
+
+                      {confirmDeleteId === interview.id ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-[rgb(var(--muted-rgb))]">Delete?</span>
+                          <button
+                            onClick={() => deleteInterview(interview.id)}
+                            className="rounded-xl bg-red-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-red-500"
+                          >
+                            Yes
+                          </button>
+                          <button
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="rounded-xl border border-[rgb(var(--border-rgb))] px-4 py-3 text-sm font-bold transition hover:bg-[rgb(var(--card-rgb))]"
+                          >
+                            No
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmDeleteId(interview.id)}
+                          className="rounded-xl border border-red-500/30 px-4 py-3 text-sm font-bold text-red-500 transition hover:bg-red-500/10"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {isOpen && (

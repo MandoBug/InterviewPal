@@ -71,13 +71,14 @@ async def test_start_interview_authenticated(client, auth_token):
     with patch("app.api.routes.interviews.generate_interview_questions", return_value=MOCK_QUESTIONS):
         response = await client.post(
             "/api/interviews/start",
-            json={"role": "Software Engineer"},
+            json={"role": "Software Engineer", "interview_type": "text"},
             headers={"Authorization": f"Bearer {auth_token}"},
         )
     assert response.status_code == 201
     data = response.json()
     assert data["role"] == "Software Engineer"
     assert data["status"] == "in_progress"
+    assert data["interview_type"] == "text"
     assert len(data["questions"]) == 3
 
 
