@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import api from '@/lib/api';
 
 const roleOptions = [
   'Software Engineer',
@@ -11,9 +12,26 @@ const roleOptions = [
   'Human Resources Specialist',
 ];
 
+interface ProgressPoint {
+  id: string;
+  role: string;
+  interview_type: string;
+  score: number;
+  completed_at: string;
+}
+
+interface Stats {
+  total_completed: number;
+  average_text_score: number | null;
+  average_video_score: number | null;
+  most_interviewed_role: string | null;
+}
+
 export default function Dashboard() {
   const router = useRouter();
   const [role, setRole] = useState('Software Engineer');
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [history, setHistory] = useState<ProgressPoint[]>([]);
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
@@ -23,37 +41,16 @@ export default function Dashboard() {
     }
 
     const savedRole = localStorage.getItem('selected_role');
-    if (savedRole) setRole(savedRole);
+    if (savedRole && roleOptions.includes(savedRole)) setRole(savedRole);
+
+    api.get('/api/interviews/stats').then((r) => setStats(r.data)).catch(() => {});
+    api.get('/api/interviews/progress').then((r) => setHistory(r.data.slice(-5).reverse())).catch(() => {});
   }, [router]);
 
   function startInterview() {
     localStorage.setItem('selected_role', role);
     router.push('/interview');
   }
-
-  const history = [
-    {
-      type: 'Video Interview',
-      role: 'Software Engineer',
-      created_at: '2026-05-20T23:41:00',
-      status: 'Complete',
-      duration: '8:34',
-    },
-    {
-      type: 'Video Interview',
-      role: 'Software Engineer',
-      created_at: '2026-05-21T23:41:00',
-      status: 'Complete',
-      duration: '10:02',
-    },
-    {
-      type: 'Video Interview',
-      role: 'Software Engineer',
-      created_at: '2026-05-22T23:41:00',
-      status: 'Complete',
-      duration: '5:19',
-    }
-  ];
 
   return (
     <div className="min-h-screen bg-[rgb(var(--background-rgb))] p-8 text-[rgb(var(--foreground-rgb))] transition-colors">
@@ -64,30 +61,24 @@ export default function Dashboard() {
               🐌
             </div>
             <div>
-              <h1 className="text-xl font-bold text-[rgb(var(--foreground-rgb))]">
-                InterviewPal
-              </h1>
-              <p className="text-sm text-[rgb(var(--muted-rgb))]">
-                Sprint 2 interview orchestration
-              </p>
+              <h1 className="text-xl font-bold text-[rgb(var(--foreground-rgb))]">InterviewPal</h1>
+              <p className="text-sm text-[rgb(var(--muted-rgb))]">AI-powered mock interview prep</p>
             </div>
           </div>
           <p className="text-sm text-[rgb(var(--muted-rgb))]">Welcome back!</p>
         </header>
 
+        {/* Start Interview */}
         <section className="mb-8 rounded-3xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] p-8 shadow-xl transition-colors">
           <p className="mb-2 text-sm font-semibold uppercase tracking-wider text-blue-500">
             Start a new practice session
           </p>
-
           <h2 className="mb-4 text-3xl font-extrabold text-[rgb(var(--foreground-rgb))]">
             Choose your interview role
           </h2>
-
           <p className="mb-6 max-w-2xl text-[rgb(var(--muted-rgb))]">
-            This role is saved and sent to the AI question generator, so each interview session gets tailored questions.
+            This role is saved and sent to the AI question generator so each session gets tailored questions.
           </p>
-
           <div className="grid gap-4 md:grid-cols-[1fr_auto]">
             <div className="relative w-full">
               <select
@@ -96,17 +87,11 @@ export default function Dashboard() {
                 className="w-full appearance-none rounded-xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--background-rgb))] px-4 py-4 pr-12 text-[rgb(var(--foreground-rgb))] outline-none transition-colors focus:ring-2 focus:ring-blue-500"
               >
                 {roleOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
+                  <option key={option} value={option}>{option}</option>
                 ))}
               </select>
-
-              <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[rgb(var(--muted-rgb))]">
-                ▼
-              </div>
+              <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[rgb(var(--muted-rgb))]">▼</div>
             </div>
-
             <button
               onClick={startInterview}
               className="rounded-xl bg-blue-600 px-8 py-4 text-lg font-bold text-white shadow-lg transition hover:bg-blue-500 active:scale-95"
@@ -117,54 +102,70 @@ export default function Dashboard() {
         </section>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+          {/* Session History */}
           <div className="rounded-2xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] p-6 shadow-sm transition-colors">
             <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-[rgb(var(--muted-rgb))]">
-              Session History (Placeholder values, need to change)
+              Recent Sessions
             </h3>
-
-            <ul className="space-y-4">
-              {history.map((session, i) => (
-                <li
-                  key={i}
-                  className="flex items-center justify-between border-b border-[rgb(var(--border-rgb))] pb-3 last:border-0"
-                >
-                  <div>
-                    <p className="font-medium text-[rgb(var(--foreground-rgb))]">
-                      {new Date(session.created_at).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                      })}{' '}
-                      • {session.role} {session.type}
-                    </p>
-                    <p className="mt-1 text-xs text-[rgb(var(--muted-rgb))]">
-                      Duration: {session.duration}
-                    </p>
-                  </div>
-
-                  <span className="rounded-full bg-green-500/10 px-3 py-1 text-xs font-bold text-green-500">
-                    {session.status}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            {history.length === 0 ? (
+              <p className="text-sm text-[rgb(var(--muted-rgb))]">No completed sessions yet. Start an interview to see your history here.</p>
+            ) : (
+              <ul className="space-y-4">
+                {history.map((session) => (
+                  <li
+                    key={session.id}
+                    className="flex items-center justify-between border-b border-[rgb(var(--border-rgb))] pb-3 last:border-0"
+                  >
+                    <div>
+                      <p className="font-medium text-[rgb(var(--foreground-rgb))]">
+                        {new Date(session.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        {' '}• {session.role}
+                      </p>
+                      <p className="mt-1 text-xs capitalize text-[rgb(var(--muted-rgb))]">
+                        {session.interview_type} interview
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-blue-500/10 px-3 py-1 text-xs font-bold text-blue-500">
+                      {session.score}/10
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
-          <div className="rounded-2xl border border-dashed border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] p-6 transition-colors">
-            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-[rgb(var(--muted-rgb))]">
-              Sprint 2 Status
+          {/* Stats */}
+          <div className="rounded-2xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] p-6 shadow-sm transition-colors">
+            <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-[rgb(var(--muted-rgb))]">
+              Your Stats
             </h3>
-
-            <ul className="space-y-2 text-sm text-[rgb(var(--muted-rgb))]">
-              <li>✅ Start interview route connected</li>
-              <li>✅ Role is passed into question generation</li>
-              <li>✅ Loading state appears during generation</li>
-              <li>✅ Questions are shown one at a time</li>
-            </ul>
+            {stats === null ? (
+              <p className="text-sm text-[rgb(var(--muted-rgb))]">Loading...</p>
+            ) : (
+              <ul className="space-y-3 text-sm">
+                <li className="flex justify-between">
+                  <span className="text-[rgb(var(--muted-rgb))]">Sessions completed</span>
+                  <span className="font-bold">{stats.total_completed}</span>
+                </li>
+                <li className="flex justify-between">
+                  <span className="text-[rgb(var(--muted-rgb))]">Avg text score</span>
+                  <span className="font-bold">{stats.average_text_score ?? '—'}{stats.average_text_score ? '/10' : ''}</span>
+                </li>
+                <li className="flex justify-between">
+                  <span className="text-[rgb(var(--muted-rgb))]">Avg video score</span>
+                  <span className="font-bold">{stats.average_video_score ?? '—'}{stats.average_video_score ? '/10' : ''}</span>
+                </li>
+                <li className="flex justify-between">
+                  <span className="text-[rgb(var(--muted-rgb))]">Top role practiced</span>
+                  <span className="font-bold">{stats.most_interviewed_role ?? '—'}</span>
+                </li>
+              </ul>
+            )}
           </div>
         </div>
 
         <footer className="mt-16 text-center text-xs text-[rgb(var(--muted-rgb))]">
-          Powered by FastAPI, PostgreSQL, and Claude-compatible AI fallback logic
+          Powered by FastAPI, PostgreSQL, and Claude AI
         </footer>
       </div>
     </div>
