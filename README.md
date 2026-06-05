@@ -60,10 +60,10 @@ AI-powered mock interview preparation platform for UCSC students.
 | Sprint 3 Report | https://docs.google.com/document/d/1yw9yWTAwQsMD4cB0V8zclIqPWAzmEi75F2O53POfhMM/edit |
 | Sprint 4 Plan | https://docs.google.com/document/d/1ynDC0SEFvq0seVyQwjS2tdNMJLNJKewXbyAuFdY66Kk/edit |
 | Sprint 4 Report | https://docs.google.com/document/d/1evsAqzTlifameEIzBzaI-rpiSihh7f28hDGXPu8UdXM/edit |
-| Team Working Agreement | ⚠️ PLACEHOLDER — add link if you have one |
-| Definition of Done | ⚠️ PLACEHOLDER — add link if you have one |
-| Test Plan and Report | ⚠️ PLACEHOLDER — add link to test plan doc if you have one |
-| Release Summary Document | ⚠️ PLACEHOLDER — add link if you have one (or use the section below) |
+| Team Working Agreement | https://docs.google.com/document/d/1VpT0_qzxk53eVcRL_OdlwmzC_rSI7Id1IiCAwh5qD6o/edit |
+| Definition of Done | https://docs.google.com/document/d/1XEIQ08jXoQKMUuDUPnZuGW4OTxbXb8tgSmKG08xeuOQ/edit |
+| Release Summary Document | https://docs.google.com/document/d/1uHjfGreHb0E8TMtoQd9EHQfuHK4P6Rg96rCQjlWXemQ/edit |
+| Test Plan and Report | https://docs.google.com/document/d/1lpAhWYRDT-TtabrIl82DJg754fSL8hqLKP6eps5Cj30/edit |
 
 ---
 
