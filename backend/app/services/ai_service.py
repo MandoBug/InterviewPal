@@ -116,21 +116,26 @@ def _normalize_feedback(raw: Any, response_text: str) -> dict[str, Any]:
     }
 
 
-def _fallback_feedback(response_text: str) -> dict[str, Any]:
+def _fallback_feedback(response_text: str, interview_type: str = "text") -> dict[str, Any]:
     text = response_text.strip()
-    filler_words = [
-        word for word in ["um", "uh", "like", "you know", "basically"] if word in text.lower()
-    ]
+    
+    # Only detect filler words for video interviews
+    if interview_type == "video":
+        filler_words = [
+            word for word in ["um", "uh", "like", "you know", "basically"] if word in text.lower()
+        ]
+    else:
+        filler_words = []
     
     # Check for test phrases or extremely short responses
     lower_text = text.lower()
-    is_test_phrase = any(phrase in lower_text for phrase in ["test question", "testing", "this is a test", "placeholder"])
+    is_test_phrase = any(phrase in lower_text for phrase in ["test question", "testing", "this is a test", "placeholder", "test answer"])
     
     if not text:
         return {
             "score": 1,
             "strengths": ["No answer provided"],
-            "improvements": ["Please record a response to receive feedback."],
+            "improvements": ["Please provide a response to receive feedback."],
             "filler_words": filler_words,
         }
     
@@ -139,41 +144,93 @@ def _fallback_feedback(response_text: str) -> dict[str, Any]:
         score = 1 if (is_test_phrase or len(text) < 8) else 2
         return {
             "score": score,
-            "strengths": ["Clear microphone audio capture" if text else "Audio captured"],
+            "strengths": ["Clear microphone audio capture" if interview_type == "video" else "Text formatting captured"],
             "improvements": [
                 "Provide a genuine professional answer instead of test/placeholder text.",
-                "Aim for a comprehensive response (usually 45-90 seconds long).",
+                "Aim for a more comprehensive response." if interview_type == "text" else "Aim for a comprehensive response (usually 45-90 seconds long).",
                 "Use the STAR method (Situation, Task, Action, Result) to structure your answer."
             ],
             "filler_words": filler_words,
         }
         
-    # Moderately short response
+    # Content-based adaptive feedback generator for valid responses
+    strengths = []
+    improvements = []
+    
+    # Analyze text features
+    has_metrics = bool(re.search(r'\b\d+\b|%', text))
+    action_verbs = ["implemented", "designed", "created", "built", "solved", "fixed", "wrote", "led", "managed", "optimized", "developed"]
+    has_action_verbs = any(verb in lower_text for verb in action_verbs)
+    sentences = [s.strip() for s in re.split(r'[.!?]+', text) if s.strip()]
+    avg_sentence_len = len(text.split()) / max(1, len(sentences))
+    
+    # Determine base score
     if len(text) < 60:
-        return {
-            "score": 4,
-            "strengths": ["Direct response to the prompt", "Clear sentence structure"],
-            "improvements": [
-                "Elaborate on your points with specific project examples.",
-                "Detail your individual contributions and action steps.",
-                "Include the business impact or quantitative results of your actions."
-            ],
-            "filler_words": filler_words,
-        }
+        base_score = 4
+    else:
+        base_score = 8
+        if has_metrics:
+            base_score += 1
+        if interview_type == "video" and len(filler_words) > 2:
+            base_score -= 1
+        base_score = max(5, min(base_score, 10))
+
+    # Build strengths list
+    if len(text) >= 100:
+        strengths.append("Comprehensive response covering details of your experience")
+    else:
+        strengths.append("Clear written structure" if interview_type == "text" else "Clear spoken structure")
         
-    # Long response (looks like a valid attempt)
+    if interview_type == "video":
+        if len(filler_words) == 0:
+            strengths.append("Excellent spoken delivery with zero verbal filler words")
+        else:
+            strengths.append("Clear spoken structure and pacing")
+    else:  # text
+        if text and text[0].isupper() and text[-1] in ".!?":
+            strengths.append("Clear written structure with correct capitalization and punctuation")
+        else:
+            strengths.append("Direct response to the prompt")
+
+    if has_metrics:
+        strengths.append("Great use of quantitative details/metrics to demonstrate impact")
+    elif has_action_verbs:
+        strengths.append("Strong use of active action verbs to describe achievements")
+
+    # Build improvements list
+    if len(sentences) <= 1:
+        improvements.append("Structure your answer into multiple sentences to make it easier to follow.")
+        
+    if not has_metrics:
+        improvements.append("Incorporate quantitative metrics (e.g. percentages, time saved) where applicable.")
+        
+    if interview_type == "video":
+        if len(filler_words) > 2:
+            improvements.append("Try to pause silently instead of using verbal filler words like 'um' or 'like'.")
+        elif avg_sentence_len > 25:
+            improvements.append("Keep spoken sentences shorter to improve clarity and listener engagement.")
+        else:
+            improvements.append("Refine your pacing and spoken communication style.")
+    else:  # text
+        if text and (not text[0].isupper() or text[-1] not in ".!?"):
+            improvements.append("Ensure proper sentence capitalization and punctuation throughout.")
+        improvements.append("Use the STAR method (Situation, Task, Action, Result) to structure your answer.")
+
+    # Deduplicate and slice lists to be 1 to 3 items
+    unique_strengths = []
+    for s in strengths:
+        if s not in unique_strengths:
+            unique_strengths.append(s)
+            
+    unique_improvements = []
+    for imp in improvements:
+        if imp not in unique_improvements:
+            unique_improvements.append(imp)
+            
     return {
-        "score": 8,
-        "strengths": [
-            "Comprehensive response covering details of your experience",
-            "Clear logical structure and progression of ideas",
-            "Good relevance to the requested role context"
-        ],
-        "improvements": [
-            "Structure your answer using the STAR method for maximum clarity.",
-            "Incorporate quantitative metrics (e.g. percentages, time saved) where applicable.",
-            "Refine your pacing to minimize use of filler words."
-        ],
+        "score": base_score,
+        "strengths": unique_strengths[:3] or ["Direct response to the prompt"],
+        "improvements": unique_improvements[:3] or ["Use the STAR method (Situation, Task, Action, Result) to structure your answer."],
         "filler_words": filler_words,
     }
 
@@ -240,24 +297,48 @@ Return ONLY a JSON array with no extra text. Each object must have exactly these
     return _fallback_questions(role, num_questions)
 
 
-async def generate_feedback(role: str, question: str, response_text: str) -> dict[str, Any]:
-    prompt = f"""You are an expert interview coach evaluating a candidate for a {role} position.
+async def generate_feedback(role: str, question: str, response_text: str, interview_type: str = "text") -> dict[str, Any]:
+    if interview_type == "video":
+        prompt = f"""You are an expert spoken communications coach evaluating a candidate's spoken response transcript for a {role} position.
 
 Question asked: {question}
-Candidate's response: {response_text}
+Candidate's spoken transcript: {response_text}
 
 CRITICAL RULES FOR EVALUATION:
 1. Do NOT hallucinate details. If the candidate's response is extremely short (e.g. under 15 words, a single short sentence, or just a few words), irrelevant to the question, or contains placeholder/test phrases (such as "this is a test answer" or "test question"), you MUST:
    - Assign a score of 1 or 2.
    - Set the 'strengths' to: ["Clear microphone audio capture"] (do NOT invent strengths like "Clear project description" or "Team collaboration" if no project details exist in the response).
    - Set the 'improvements' to: ["Provide a genuine professional answer instead of test/placeholder text."].
-2. Evaluate actual professional responses based on clarity, structure (e.g. STAR method), technical depth, and business impact.
+2. Evaluate the response based on spoken communication quality (clarity of flow, structure, presence of verbal padding/filler words, and ability to articulate ideas aloud).
+3. Identify and list any filler words found in the spoken text (e.g., "um", "uh", "like", "you know", "basically", "so").
+4. Ensure the strengths and improvements are NOT generic. They must be highly adaptive and directly refer to specific topics, technical points, or examples mentioned in the candidate's response (e.g., referencing React or database work specifically if they discussed it).
 
 Return ONLY a JSON object with no extra text and exactly these keys:
 - "score": integer 1-10
 - "strengths": array of 1-3 short strength strings
 - "improvements": array of 1-3 short improvement strings
 - "filler_words": array of filler words found, or [] if none
+"""
+    else:  # text interview
+        prompt = f"""You are an expert written communications reviewer evaluating a candidate's written answer for a {role} position.
+
+Question asked: {question}
+Candidate's written answer: {response_text}
+
+CRITICAL RULES FOR EVALUATION:
+1. Do NOT hallucinate details. If the candidate's response is extremely short (e.g. under 15 words, a single short sentence, or just a few words), irrelevant to the question, or contains placeholder/test phrases (such as "this is a test answer" or "test question"), you MUST:
+   - Assign a score of 1 or 2.
+   - Set the 'strengths' to: ["Text formatting captured"] (do NOT invent strengths like "Clear project description" or "Team collaboration" if no project details exist in the response).
+   - Set the 'improvements' to: ["Provide a genuine professional answer instead of test/placeholder text."].
+2. Evaluate the response based on written communication quality (professional tone, spelling/grammar, organization/use of paragraphs or use of bullet points, conciseness, and technical accuracy).
+3. Do NOT search for filler words or penalize the score for speech padding since this is a written text response. Leave the 'filler_words' array as [].
+4. Ensure the strengths and improvements are NOT generic. They must be highly adaptive and directly refer to specific topics, technical points, or examples mentioned in the candidate's response (e.g., referencing React or database work specifically if they discussed it).
+
+Return ONLY a JSON object with no extra text and exactly these keys:
+- "score": integer 1-10
+- "strengths": array of 1-3 short strength strings
+- "improvements": array of 1-3 short improvement strings
+- "filler_words": array (always leave as [] for written answers)
 """
 
     if _has_real_openai_key():
@@ -287,4 +368,4 @@ Return ONLY a JSON object with no extra text and exactly these keys:
         except Exception as e:
             print(f"Anthropic error in generate_feedback: {e}")
 
-    return _fallback_feedback(response_text)
+    return _fallback_feedback(response_text, interview_type=interview_type)

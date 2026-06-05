@@ -34,7 +34,7 @@ async def start_interview(
     db: AsyncSession = Depends(get_db),
 ):
     session = InterviewSession(
-        user_id=current_user["user_id"],
+        user_id=UUID(current_user["user_id"]),
         role=payload.role.strip(),
         interview_type=payload.interview_type,
     )
@@ -168,7 +168,9 @@ async def submit_answer(
     if session.status != SessionStatus.IN_PROGRESS:
         raise HTTPException(status_code=400, detail="Session is not in progress")
 
-    feedback = await generate_feedback(session.role, payload.question, payload.answer)
+    feedback = await generate_feedback(
+        session.role, payload.question, payload.answer, interview_type=session.interview_type
+    )
 
     previous_feedback: list[dict] = []
     if session.feedback:
@@ -236,7 +238,12 @@ async def end_interview(
                         recording.transcript = transcript_text
 
                         # 2. Grade
-                        feedback_result = await generate_feedback(session.role, recording.question_text, transcript_text)
+                        feedback_result = await generate_feedback(
+                            session.role,
+                            recording.question_text,
+                            transcript_text,
+                            interview_type=session.interview_type,
+                        )
                         recording.feedback = json.dumps(feedback_result)
                         db.add(recording)
 

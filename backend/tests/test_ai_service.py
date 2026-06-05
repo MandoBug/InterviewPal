@@ -160,3 +160,88 @@ async def test_end_interview_video_batch():
         mock_transcribe.assert_called_once()
         mock_grade.assert_called_once()
         mock_remove.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_generate_feedback_rubric_selection_openai():
+    with patch("app.services.ai_service.settings") as mock_settings, \
+         patch("app.services.ai_service.AsyncOpenAI") as mock_openai_cls:
+        
+        mock_settings.openai_api_key = "sk-proj-xyz"
+        mock_settings.anthropic_api_key = ""
+        
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+        
+        mock_choice = MagicMock()
+        mock_choice.message.content = '{"score": 8, "strengths": ["test"], "improvements": [], "filler_words": []}'
+        
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+        
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+        
+        # Test text rubric
+        await generate_feedback("Software Engineer", "Describe OOP", "An answer", interview_type="text")
+        args, kwargs = mock_client.chat.completions.create.call_args
+        prompt_text = kwargs["messages"][0]["content"]
+        assert "written communications reviewer" in prompt_text
+        assert "spoken communications coach" not in prompt_text
+        
+        # Test video rubric
+        await generate_feedback("Software Engineer", "Describe OOP", "An answer", interview_type="video")
+        args, kwargs = mock_client.chat.completions.create.call_args
+        prompt_video = kwargs["messages"][0]["content"]
+        assert "spoken communications coach" in prompt_video
+        assert "written communications reviewer" not in prompt_video
+
+
+@pytest.mark.asyncio
+async def test_generate_feedback_fallback_rubrics():
+    with patch("app.services.ai_service._has_real_openai_key", return_value=False), \
+         patch("app.services.ai_service._has_real_anthropic_key", return_value=False):
+        
+        # 1. Video interview: detects filler words
+        res_video = await generate_feedback(
+            "Software Engineer",
+            "Why Python?",
+            "Basically, like, Python is super clean and like simple. I really love using it because it is very easy to write and read.",
+            interview_type="video"
+        )
+        assert res_video["score"] == 8
+        assert "like" in res_video["filler_words"]
+        assert "basically" in res_video["filler_words"]
+        assert any("spoken" in s or "Comprehensive" in s for s in res_video["strengths"])
+        
+        # 2. Text interview: ignores/does not detect filler words
+        res_text = await generate_feedback(
+            "Software Engineer",
+            "Why Python?",
+            "Basically, like, Python is super clean and like simple. I really love using it because it is very easy to write and read.",
+            interview_type="text"
+        )
+        assert res_text["score"] == 8
+        assert res_text["filler_words"] == []
+        assert any("written" in s or "Comprehensive" in s for s in res_text["strengths"])
+
+        # 3. Test/placeholder answers get low scores in both modes
+        res_test_text = await generate_feedback(
+            "Software Engineer",
+            "Why Python?",
+            "this is a test answer",
+            interview_type="text"
+        )
+        assert res_test_text["score"] <= 2
+        assert "Text formatting captured" in res_test_text["strengths"]
+        assert "Provide a genuine professional answer instead of test/placeholder text." in res_test_text["improvements"]
+
+        res_test_video = await generate_feedback(
+            "Software Engineer",
+            "Why Python?",
+            "this is a test answer",
+            interview_type="video"
+        )
+        assert res_test_video["score"] <= 2
+        assert "Clear microphone audio capture" in res_test_video["strengths"]
+        assert "Provide a genuine professional answer instead of test/placeholder text." in res_test_video["improvements"]
+
