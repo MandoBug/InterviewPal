@@ -55,6 +55,15 @@ AI-powered mock interview preparation platform for UCSC students.
 | Sprint 1 Plan | https://docs.google.com/document/d/1QpKv4nKTMJOcpIEQS2EjqM__kHh_dNmEJzpvLWf5VY8/edit |
 | Sprint 1 Report | https://docs.google.com/document/d/1qs2t7avDfZddFu7wo-kFmuDrUVMs6LsesWgPsFCtOP0/edit |
 | Sprint 2 Plan | https://docs.google.com/document/d/1dnbutO7fs4uKghcTNi_BIQOJfUIBpy02ooXU-bmqras/edit |
+| Sprint 2 Report | https://docs.google.com/document/d/1Hgy_KAiITEjFNPIUUCdC2mQCUL0xOu3rJqzDkS1DBCU/edit |
+| Sprint 3 Plan | https://docs.google.com/document/d/18O1va36Qppj0DCBUwJExqB4aAk52WZ4rTKFY3X7S8IY/edit |
+| Sprint 3 Report | https://docs.google.com/document/d/1yw9yWTAwQsMD4cB0V8zclIqPWAzmEi75F2O53POfhMM/edit |
+| Sprint 4 Plan | https://docs.google.com/document/d/1ynDC0SEFvq0seVyQwjS2tdNMJLNJKewXbyAuFdY66Kk/edit |
+| Sprint 4 Report | https://docs.google.com/document/d/1evsAqzTlifameEIzBzaI-rpiSihh7f28hDGXPu8UdXM/edit |
+| Team Working Agreement | ⚠️ PLACEHOLDER — add link if you have one |
+| Definition of Done | ⚠️ PLACEHOLDER — add link if you have one |
+| Test Plan and Report | ⚠️ PLACEHOLDER — add link to test plan doc if you have one |
+| Release Summary Document | ⚠️ PLACEHOLDER — add link if you have one (or use the section below) |
 
 ---
 
