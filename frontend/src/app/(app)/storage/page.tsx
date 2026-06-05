@@ -344,14 +344,6 @@ export default function StoragePage() {
             })}
           </div>
         )}
-
-        <div className="mt-6 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-600">
-          <p className="font-bold">Storage note</p>
-          <p>
-            This demo saves recordings in this browser with IndexedDB. For production,
-            videos should be uploaded to backend/cloud storage.
-          </p>
-        </div>
       </div>
     </main>
   );
