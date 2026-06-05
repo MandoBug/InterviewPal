@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     # AI
     anthropic_api_key: str = ""
     openai_api_key: str = ""
+    assemblyai_api_key: str = ""
 
     # AWS S3
     aws_access_key_id: str = ""

@@ -1,4 +1,5 @@
 import json
+import os
 from uuid import UUID
 from datetime import datetime, timezone
 
@@ -9,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.interview import InterviewSession, SessionStatus
+from app.models.recording import Recording
 from app.schemas.interview import (
     StartInterviewRequest,
     SubmitAnswerRequest,
@@ -18,6 +20,7 @@ from app.schemas.interview import (
     InterviewQuestion,
 )
 from app.services.ai_service import generate_interview_questions, generate_feedback
+from app.services.transcription_service import transcribe_recording_assemblyai
 from app.services.email_service import send_session_summary
 from app.models.user import User
 
@@ -31,7 +34,7 @@ async def start_interview(
     db: AsyncSession = Depends(get_db),
 ):
     session = InterviewSession(
-        user_id=current_user["user_id"],
+        user_id=UUID(current_user["user_id"]),
         role=payload.role.strip(),
         interview_type=payload.interview_type,
     )
@@ -165,7 +168,9 @@ async def submit_answer(
     if session.status != SessionStatus.IN_PROGRESS:
         raise HTTPException(status_code=400, detail="Session is not in progress")
 
-    feedback = await generate_feedback(session.role, payload.question, payload.answer)
+    feedback = await generate_feedback(
+        session.role, payload.question, payload.answer, interview_type=session.interview_type
+    )
 
     previous_feedback: list[dict] = []
     if session.feedback:
@@ -208,6 +213,78 @@ async def end_interview(
 
     session.status = SessionStatus.COMPLETED
     session.completed_at = datetime.now(timezone.utc)
+
+    # For video interviews, batch transcribe and grade all recordings at the end
+    if session.interview_type == "video":
+        recs_result = await db.execute(
+            select(Recording)
+            .where(Recording.session_id == session_id)
+            .order_by(Recording.question_index)
+        )
+        recordings = recs_result.scalars().all()
+
+        feedback_list = []
+
+        for recording in recordings:
+            if not recording.transcript or not recording.feedback:
+                file_path = os.path.join("recordings_media", recording.filename)
+                if os.path.exists(file_path):
+                    try:
+                        with open(file_path, "rb") as f:
+                            file_bytes = f.read()
+
+                        # 1. Transcribe
+                        transcript_text = await transcribe_recording_assemblyai(file_bytes)
+                        recording.transcript = transcript_text
+
+                        # 2. Grade
+                        feedback_result = await generate_feedback(
+                            session.role,
+                            recording.question_text,
+                            transcript_text,
+                            interview_type=session.interview_type,
+                        )
+                        recording.feedback = json.dumps(feedback_result)
+                        db.add(recording)
+
+                        feedback_list.append(feedback_result)
+
+                        # 3. Clean up raw file
+                        try:
+                            os.remove(file_path)
+                        except Exception:
+                            pass
+                    except Exception:
+                        from app.services.ai_service import _fallback_feedback
+                        mock_feedback = _fallback_feedback("")
+                        recording.transcript = "Transcription unavailable."
+                        recording.feedback = json.dumps(mock_feedback)
+                        db.add(recording)
+                        feedback_list.append(mock_feedback)
+                else:
+                    from app.services.ai_service import _fallback_feedback
+                    mock_feedback = _fallback_feedback("")
+                    recording.transcript = "Transcription file missing."
+                    recording.feedback = json.dumps(mock_feedback)
+                    db.add(recording)
+                    feedback_list.append(mock_feedback)
+            else:
+                try:
+                    loaded = json.loads(recording.feedback)
+                    feedback_list.append(loaded)
+                except Exception:
+                    pass
+
+        # Save aggregated feedback and session score
+        session.feedback = json.dumps(feedback_list)
+        scores = [
+            int(item["score"])
+            for item in feedback_list
+            if isinstance(item.get("score"), int)
+        ]
+        if scores:
+            session.score = round(sum(scores) / len(scores))
+
     await db.flush()
     await db.refresh(session)
 

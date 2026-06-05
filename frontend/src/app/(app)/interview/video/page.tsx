@@ -25,6 +25,8 @@ interface RecordedAnswer {
   videoBlob: Blob;
   videoUrl: string;
   durationSeconds: number;
+  transcript?: string;
+  feedback?: any;
 }
 
 export default function VideoInterviewPage() {
@@ -270,6 +272,8 @@ export default function VideoInterviewPage() {
           question: answer.question,
           videoBlob: answer.videoBlob,
           durationSeconds: answer.durationSeconds,
+          transcript: answer.transcript,
+          feedback: answer.feedback,
         })),
       };
 
@@ -431,15 +435,55 @@ export default function VideoInterviewPage() {
     setPhase('ready');
   }
 
-  function nextQuestion() {
+  async function nextQuestion() {
     stopCamera();
 
     if (!session) return;
 
+    const currentAnswer = recordedAnswers.find(
+      (ans) => ans.questionIndex === questionIndex
+    );
+
+    if (currentAnswer && !currentAnswer.transcript) {
+      setLoading(true);
+      setError('');
+      try {
+        const formData = new FormData();
+        formData.append('session_id', session.id);
+        formData.append('question_index', String(questionIndex));
+        formData.append('question_text', currentAnswer.question);
+        formData.append('duration_seconds', String(currentAnswer.durationSeconds));
+        formData.append('file', currentAnswer.videoBlob, `recording_q${questionIndex}.webm`);
+
+        const res = await api.post('/api/recordings/upload', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+
+        setRecordedAnswers((prev) =>
+          prev.map((ans) =>
+            ans.questionIndex === questionIndex
+              ? {
+                  ...ans,
+                  transcript: res.data.transcript,
+                  feedback: res.data.feedback ? JSON.parse(res.data.feedback) : null,
+                }
+              : ans
+          )
+        );
+      } catch (err: any) {
+        const msg = err?.response?.data?.detail || 'Failed to upload and grade response.';
+        setError(msg);
+        setLoading(false);
+        return;
+      }
+    }
+
     const next = questionIndex + 1;
 
     if (next >= session.questions.length) {
-      finishInterview();
+      await finishInterview();
       return;
     }
 
@@ -447,6 +491,7 @@ export default function VideoInterviewPage() {
     setCurrentPlaybackUrl(null);
     setElapsedSeconds(0);
     setError('');
+    setLoading(false);
     setPhase('ready');
   }
 
@@ -460,8 +505,62 @@ export default function VideoInterviewPage() {
 
     setLoading(true);
 
+    const currentAnswer = recordedAnswers.find(
+      (ans) => ans.questionIndex === questionIndex
+    );
+
+    if (currentAnswer && !currentAnswer.transcript) {
+      try {
+        const formData = new FormData();
+        formData.append('session_id', session.id);
+        formData.append('question_index', String(questionIndex));
+        formData.append('question_text', currentAnswer.question);
+        formData.append('duration_seconds', String(currentAnswer.durationSeconds));
+        formData.append('file', currentAnswer.videoBlob, `recording_q${questionIndex}.webm`);
+
+        const res = await api.post('/api/recordings/upload', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+
+        setRecordedAnswers((prev) =>
+          prev.map((ans) =>
+            ans.questionIndex === questionIndex
+              ? {
+                  ...ans,
+                  transcript: res.data.transcript,
+                  feedback: res.data.feedback ? JSON.parse(res.data.feedback) : null,
+                }
+              : ans
+          )
+        );
+      } catch (err: any) {
+        // Keep moving
+      }
+    }
+
     try {
       await api.post(`/api/interviews/${session.id}/end`);
+
+      // Fetch finalized recordings (with transcripts & feedback computed in the backend)
+      const recsRes = await api.get(`/api/recordings/session/${session.id}`);
+      if (Array.isArray(recsRes.data)) {
+        setRecordedAnswers((prev) => {
+          return recsRes.data.map((rec: any) => {
+            const existing = prev.find((ans) => ans.questionIndex === rec.question_index);
+            return {
+              questionIndex: rec.question_index,
+              question: rec.question_text,
+              videoBlob: existing?.videoBlob || new Blob(),
+              videoUrl: existing?.videoUrl || '',
+              durationSeconds: rec.duration_seconds,
+              transcript: rec.transcript,
+              feedback: rec.feedback ? JSON.parse(rec.feedback) : null,
+            };
+          });
+        });
+      }
     } catch {
       // The local summary is still useful even if the backend request fails.
     } finally {
@@ -600,6 +699,51 @@ export default function VideoInterviewPage() {
                         <p className="font-semibold text-[rgb(var(--foreground-rgb))]">
                           {answer.question}
                         </p>
+
+                        {/* AI Feedback & Transcript Box */}
+                        {answer.transcript && (
+                          <div className="mt-4 rounded-xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] p-4 shadow-sm">
+                            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                              <h4 className="text-sm font-bold text-blue-400">AI Transcript</h4>
+                              {answer.feedback?.score !== undefined && (
+                                <span className="rounded-full bg-blue-500/10 px-3 py-1 text-xs font-bold text-blue-400">
+                                  Score: {answer.feedback.score}/10
+                                </span>
+                              )}
+                            </div>
+                            <p className="mb-4 text-sm text-[rgb(var(--muted-rgb))] italic">
+                              "{answer.transcript}"
+                            </p>
+
+                            {answer.feedback && (
+                              <div className="grid gap-3 md:grid-cols-2">
+                                <div className="rounded-lg bg-green-500/5 p-3 border border-green-500/10">
+                                  <h5 className="mb-1 text-xs font-bold text-green-400">Strengths</h5>
+                                  <ul className="list-disc pl-4 text-xs text-[rgb(var(--muted-rgb))] space-y-1">
+                                    {answer.feedback.strengths?.map((s: string, idx: number) => (
+                                      <li key={idx}>{s}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                                <div className="rounded-lg bg-amber-500/5 p-3 border border-amber-500/10">
+                                  <h5 className="mb-1 text-xs font-bold text-amber-400">Improvements</h5>
+                                  <ul className="list-disc pl-4 text-xs text-[rgb(var(--muted-rgb))] space-y-1">
+                                    {answer.feedback.improvements?.map((imp: string, idx: number) => (
+                                      <li key={idx}>{imp}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              </div>
+                            )}
+
+                            {answer.feedback?.filler_words?.length > 0 && (
+                              <div className="mt-3 text-xs text-red-400">
+                                <span className="font-semibold">Filler words detected: </span>
+                                {answer.feedback.filler_words.join(', ')}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -656,6 +800,17 @@ export default function VideoInterviewPage() {
 
   return (
     <main className="min-h-screen bg-[rgb(var(--background-rgb))] p-8 text-[rgb(var(--foreground-rgb))]">
+      {loading && phase !== 'loading' && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] p-8 text-center shadow-2xl">
+            <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-4 border-blue-500 border-t-transparent"></div>
+            <h2 className="mb-2 text-2xl font-bold">Transcribing & Grading</h2>
+            <p className="text-[rgb(var(--muted-rgb))]">
+              AssemblyAI and Claude are evaluating your response. Please wait...
+            </p>
+          </div>
+        </div>
+      )}
       <div className="mx-auto max-w-6xl">
         <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end">
           <div>

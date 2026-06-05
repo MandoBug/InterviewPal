@@ -25,6 +25,8 @@ def upgrade() -> None:
         sa.Column('question_text', sa.String(1000), nullable=False),
         sa.Column('filename', sa.String(500), nullable=False),
         sa.Column('duration_seconds', sa.Integer(), default=0),
+        sa.Column('transcript', sa.Text(), nullable=True),
+        sa.Column('feedback', sa.Text(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     )
     op.create_index('ix_recordings_session_id', 'recordings', ['session_id'])

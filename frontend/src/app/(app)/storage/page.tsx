@@ -7,6 +7,8 @@ interface SavedResponse {
   question: string;
   videoBlob: Blob;
   durationSeconds: number;
+  transcript?: string;
+  feedback?: any;
 }
 
 interface SavedInterview {
@@ -286,6 +288,51 @@ export default function StoragePage() {
                               <p className="font-semibold">
                                 {response.question}
                               </p>
+
+                              {/* AI Feedback & Transcript Box */}
+                              {response.transcript && (
+                                <div className="mt-4 rounded-xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] p-4 shadow-sm">
+                                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                    <h4 className="text-sm font-bold text-blue-400">AI Transcript</h4>
+                                    {response.feedback?.score !== undefined && (
+                                      <span className="rounded-full bg-blue-500/10 px-3 py-1 text-xs font-bold text-blue-400">
+                                        Score: {response.feedback.score}/10
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="mb-4 text-sm text-[rgb(var(--muted-rgb))] italic">
+                                    "{response.transcript}"
+                                  </p>
+
+                                  {response.feedback && (
+                                    <div className="grid gap-3 md:grid-cols-2">
+                                      <div className="rounded-lg bg-green-500/5 p-3 border border-green-500/10">
+                                        <h5 className="mb-1 text-xs font-bold text-green-400">Strengths</h5>
+                                        <ul className="list-disc pl-4 text-xs text-[rgb(var(--muted-rgb))] space-y-1">
+                                          {response.feedback.strengths?.map((s: string, idx: number) => (
+                                            <li key={idx}>{s}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                      <div className="rounded-lg bg-amber-500/5 p-3 border border-amber-500/10">
+                                        <h5 className="mb-1 text-xs font-bold text-amber-400">Improvements</h5>
+                                        <ul className="list-disc pl-4 text-xs text-[rgb(var(--muted-rgb))] space-y-1">
+                                          {response.feedback.improvements?.map((imp: string, idx: number) => (
+                                            <li key={idx}>{imp}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {response.feedback?.filler_words?.length > 0 && (
+                                    <div className="mt-3 text-xs text-red-400">
+                                      <span className="font-semibold">Filler words detected: </span>
+                                      {response.feedback.filler_words.join(', ')}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
                         );
@@ -297,14 +344,6 @@ export default function StoragePage() {
             })}
           </div>
         )}
-
-        <div className="mt-6 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-600">
-          <p className="font-bold">Storage note</p>
-          <p>
-            This demo saves recordings in this browser with IndexedDB. For production,
-            videos should be uploaded to backend/cloud storage.
-          </p>
-        </div>
       </div>
     </main>
   );

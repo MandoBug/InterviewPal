@@ -51,7 +51,8 @@ async def get_me(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(User).where(User.id == current_user["user_id"]))
+    from uuid import UUID
+    result = await db.execute(select(User).where(User.id == UUID(current_user["user_id"])))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -64,7 +65,8 @@ async def update_me(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(User).where(User.id == current_user["user_id"]))
+    from uuid import UUID
+    result = await db.execute(select(User).where(User.id == UUID(current_user["user_id"])))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")

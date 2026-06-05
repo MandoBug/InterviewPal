@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import String, DateTime, ForeignKey, Integer
+from sqlalchemy import String, DateTime, ForeignKey, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -24,6 +24,8 @@ class Recording(Base):
     question_text: Mapped[str] = mapped_column(String(1000), nullable=False)
     filename: Mapped[str] = mapped_column(String(500), nullable=False)
     duration_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
+    feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
