@@ -3,6 +3,7 @@ import re
 from typing import Any
 
 import anthropic
+from openai import AsyncOpenAI
 
 from app.core.config import get_settings
 
@@ -116,20 +117,75 @@ def _normalize_feedback(raw: Any, response_text: str) -> dict[str, Any]:
 
 
 def _fallback_feedback(response_text: str) -> dict[str, Any]:
+    text = response_text.strip()
     filler_words = [
-        word for word in ["um", "uh", "like", "you know", "basically"] if word in response_text.lower()
+        word for word in ["um", "uh", "like", "you know", "basically"] if word in text.lower()
     ]
+    
+    # Check for test phrases or extremely short responses
+    lower_text = text.lower()
+    is_test_phrase = any(phrase in lower_text for phrase in ["test question", "testing", "this is a test", "placeholder"])
+    
+    if not text:
+        return {
+            "score": 1,
+            "strengths": ["No answer provided"],
+            "improvements": ["Please record a response to receive feedback."],
+            "filler_words": filler_words,
+        }
+    
+    if is_test_phrase or len(text) < 15:
+        # Very short or obvious test/placeholder response
+        score = 1 if (is_test_phrase or len(text) < 8) else 2
+        return {
+            "score": score,
+            "strengths": ["Clear microphone audio capture" if text else "Audio captured"],
+            "improvements": [
+                "Provide a genuine professional answer instead of test/placeholder text.",
+                "Aim for a comprehensive response (usually 45-90 seconds long).",
+                "Use the STAR method (Situation, Task, Action, Result) to structure your answer."
+            ],
+            "filler_words": filler_words,
+        }
+        
+    # Moderately short response
+    if len(text) < 60:
+        return {
+            "score": 4,
+            "strengths": ["Direct response to the prompt", "Clear sentence structure"],
+            "improvements": [
+                "Elaborate on your points with specific project examples.",
+                "Detail your individual contributions and action steps.",
+                "Include the business impact or quantitative results of your actions."
+            ],
+            "filler_words": filler_words,
+        }
+        
+    # Long response (looks like a valid attempt)
     return {
-        "score": 7,
-        "strengths": ["You answered the question", "Your response shows engagement"],
-        "improvements": ["Add more specific examples", "Structure the answer using the STAR method"],
+        "score": 8,
+        "strengths": [
+            "Comprehensive response covering details of your experience",
+            "Clear logical structure and progression of ideas",
+            "Good relevance to the requested role context"
+        ],
+        "improvements": [
+            "Structure your answer using the STAR method for maximum clarity.",
+            "Incorporate quantitative metrics (e.g. percentages, time saved) where applicable.",
+            "Refine your pacing to minimize use of filler words."
+        ],
         "filler_words": filler_words,
     }
 
 
 def _has_real_anthropic_key() -> bool:
     key = settings.anthropic_api_key.strip()
-    return bool(key) and key != "your-key-here"
+    return bool(key) and key not in ("", "your-key-here", "your_key_here")
+
+
+def _has_real_openai_key() -> bool:
+    key = settings.openai_api_key.strip()
+    return bool(key) and key not in ("", "your-key-here", "your_key_here")
 
 
 async def generate_interview_questions(
@@ -140,8 +196,6 @@ async def generate_interview_questions(
     num_questions: int = 5,
 ) -> list[dict[str, str]]:
     role = role.strip()
-    if not _has_real_anthropic_key():
-        return _fallback_questions(role, num_questions)
 
     prompt = f"""Generate {num_questions} mock interview questions for a {role} position.
 
@@ -156,27 +210,48 @@ Return ONLY a JSON array with no extra text. Each object must have exactly these
 - "difficulty": one of "easy", "medium", or "hard"
 """
 
-    try:
-        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-        message = await client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=1024,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = getattr(message.content[0], "text", "")
-        return _normalize_questions(_extract_json(text), role, num_questions)
-    except Exception:
-        return _fallback_questions(role, num_questions)
+    if _has_real_openai_key():
+        try:
+            client = AsyncOpenAI(api_key=settings.openai_api_key.strip())
+            response = await client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=1024,
+                temperature=0.7,
+            )
+            text = response.choices[0].message.content or ""
+            return _normalize_questions(_extract_json(text), role, num_questions)
+        except Exception as e:
+            print(f"OpenAI error in generate_interview_questions: {e}")
+
+    if _has_real_anthropic_key():
+        try:
+            client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+            message = await client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=1024,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            text = getattr(message.content[0], "text", "")
+            return _normalize_questions(_extract_json(text), role, num_questions)
+        except Exception as e:
+            print(f"Anthropic error in generate_interview_questions: {e}")
+
+    return _fallback_questions(role, num_questions)
 
 
 async def generate_feedback(role: str, question: str, response_text: str) -> dict[str, Any]:
-    if not _has_real_anthropic_key():
-        return _fallback_feedback(response_text)
-
     prompt = f"""You are an expert interview coach evaluating a candidate for a {role} position.
 
 Question asked: {question}
 Candidate's response: {response_text}
+
+CRITICAL RULES FOR EVALUATION:
+1. Do NOT hallucinate details. If the candidate's response is extremely short (e.g. under 15 words, a single short sentence, or just a few words), irrelevant to the question, or contains placeholder/test phrases (such as "this is a test answer" or "test question"), you MUST:
+   - Assign a score of 1 or 2.
+   - Set the 'strengths' to: ["Clear microphone audio capture"] (do NOT invent strengths like "Clear project description" or "Team collaboration" if no project details exist in the response).
+   - Set the 'improvements' to: ["Provide a genuine professional answer instead of test/placeholder text."].
+2. Evaluate actual professional responses based on clarity, structure (e.g. STAR method), technical depth, and business impact.
 
 Return ONLY a JSON object with no extra text and exactly these keys:
 - "score": integer 1-10
@@ -185,14 +260,31 @@ Return ONLY a JSON object with no extra text and exactly these keys:
 - "filler_words": array of filler words found, or [] if none
 """
 
-    try:
-        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-        message = await client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=512,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = getattr(message.content[0], "text", "")
-        return _normalize_feedback(_extract_json(text), response_text)
-    except Exception:
-        return _fallback_feedback(response_text)
+    if _has_real_openai_key():
+        try:
+            client = AsyncOpenAI(api_key=settings.openai_api_key.strip())
+            response = await client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=512,
+                temperature=0.5,
+            )
+            text = response.choices[0].message.content or ""
+            return _normalize_feedback(_extract_json(text), response_text)
+        except Exception as e:
+            print(f"OpenAI error in generate_feedback: {e}")
+
+    if _has_real_anthropic_key():
+        try:
+            client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+            message = await client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=512,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            text = getattr(message.content[0], "text", "")
+            return _normalize_feedback(_extract_json(text), response_text)
+        except Exception as e:
+            print(f"Anthropic error in generate_feedback: {e}")
+
+    return _fallback_feedback(response_text)

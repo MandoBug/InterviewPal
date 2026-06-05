@@ -1,4 +1,6 @@
+import json
 import uuid
+import os
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
@@ -15,6 +17,8 @@ router = APIRouter(prefix="/recordings", tags=["Recordings"])
 
 ALLOWED_TYPES = {"video/webm", "video/mp4", "audio/webm", "audio/mp4", "audio/ogg"}
 MAX_SIZE_MB = 100
+RECORDINGS_DIR = "recordings_media"
+os.makedirs(RECORDINGS_DIR, exist_ok=True)
 
 
 @router.post("/upload", response_model=RecordingResponse, status_code=status.HTTP_201_CREATED)
@@ -35,8 +39,9 @@ async def upload_recording(
     if str(session.user_id) != current_user["user_id"]:
         raise HTTPException(status_code=403, detail="Not your session")
 
-    # Validate file type
-    if file.content_type not in ALLOWED_TYPES:
+    # Validate file type (split on ';' to ignore codecs parameter)
+    base_type = file.content_type.split(";")[0].strip()
+    if base_type not in ALLOWED_TYPES:
         raise HTTPException(
             status_code=400,
             detail=f"Invalid file type '{file.content_type}'. Allowed: {', '.join(ALLOWED_TYPES)}"
@@ -48,8 +53,19 @@ async def upload_recording(
     if size_mb > MAX_SIZE_MB:
         raise HTTPException(status_code=400, detail=f"File too large. Max size is {MAX_SIZE_MB}MB.")
 
-    # Store metadata in DB (file stored in browser/IndexedDB for now)
+    # Save to local directory
     filename = f"{uuid.uuid4()}_{file.filename or 'recording.webm'}"
+    file_path = os.path.join(RECORDINGS_DIR, filename)
+    try:
+        with open(file_path, "wb") as f:
+            f.write(contents)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to write recording to disk: {str(e)}"
+        )
+
+    # Save metadata into database. Transcript & feedback are pending until session end.
     recording = Recording(
         session_id=session_id,
         user_id=uuid.UUID(current_user["user_id"]),
@@ -57,6 +73,8 @@ async def upload_recording(
         question_text=question_text,
         filename=filename,
         duration_seconds=duration_seconds,
+        transcript=None,
+        feedback=None,
     )
     db.add(recording)
     await db.flush()
@@ -99,5 +117,13 @@ async def delete_recording(
         raise HTTPException(status_code=404, detail="Recording not found")
     if str(recording.user_id) != current_user["user_id"]:
         raise HTTPException(status_code=403, detail="Not your recording")
+
+    # Clean up local file
+    file_path = os.path.join(RECORDINGS_DIR, recording.filename)
+    if os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+        except Exception:
+            pass
 
     await db.delete(recording)
