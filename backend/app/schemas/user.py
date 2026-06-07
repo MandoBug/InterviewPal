@@ -34,6 +34,7 @@ class UserResponse(BaseModel):
     full_name: str
     is_active: bool
     created_at: datetime
+    password_updated_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

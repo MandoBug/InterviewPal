@@ -256,10 +256,21 @@ export default function ProfilePage() {
     setSavingPassword(true);
 
     try {
-      await api.put('/api/auth/me/password', {
+      const res = await api.put<{
+        message: string;
+        password_updated_at: string | null;
+      }>('/api/auth/me/password', {
         current_password: passwordForm.current_password,
         new_password: passwordForm.new_password,
       });
+      setUser((prev) =>
+        prev
+          ? {
+              ...prev,
+              password_updated_at: res.data.password_updated_at,
+            }
+          : prev
+      );
       setPasswordForm({
         current_password: '',
         new_password: '',
@@ -278,7 +289,7 @@ export default function ProfilePage() {
   }
 
   const initials = profileForm.avatar_initials || getInitials(user?.full_name || '');
-  const passwordLastChangedAt = null;
+  const passwordLastChangedAt = user?.password_updated_at || null;
   const passwordStatus = passwordLastChangedAt
     ? `Last changed: ${formatProfileDate(passwordLastChangedAt)}`
     : user?.created_at

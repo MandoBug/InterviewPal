@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -120,5 +122,10 @@ async def update_password(
         )
 
     user.hashed_password = hash_password(payload.new_password)
+    user.password_updated_at = datetime.now(timezone.utc)
     await db.flush()
-    return {"message": "Password updated successfully"}
+    await db.refresh(user)
+    return {
+        "message": "Password updated successfully",
+        "password_updated_at": user.password_updated_at,
+    }

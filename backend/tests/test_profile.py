@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
@@ -25,7 +26,7 @@ async def override_get_db():
             raise
 
 
-@pytest.fixture(autouse=True)
+@pytest_asyncio.fixture(autouse=True)
 async def setup_database():
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -34,7 +35,7 @@ async def setup_database():
         await conn.run_sync(Base.metadata.drop_all)
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def client():
     app.dependency_overrides[get_db] = override_get_db
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -42,7 +43,7 @@ async def client():
     app.dependency_overrides.clear()
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def profile_user(client):
     await client.post(
         "/api/auth/signup",
@@ -174,6 +175,13 @@ async def test_profile_password_change_updates_login_credentials(client, profile
 
     assert response.status_code == 200
     assert response.json()["message"] == "Password updated successfully"
+    assert response.json()["password_updated_at"] is not None
+
+    refreshed = await client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {profile_user['token']}"},
+    )
+    assert refreshed.json()["password_updated_at"] == response.json()["password_updated_at"]
 
     old_login = await client.post(
         "/api/auth/login",
