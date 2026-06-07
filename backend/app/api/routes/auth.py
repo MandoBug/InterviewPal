@@ -5,7 +5,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import hash_password, verify_password, create_access_token, get_current_user
 from app.models.user import User
-from app.schemas.user import UserCreate, UserLogin, UserResponse, UserUpdate, TokenResponse
+from app.schemas.user import (
+    PasswordUpdate,
+    TokenResponse,
+    UserCreate,
+    UserLogin,
+    UserResponse,
+    UserUpdate,
+)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -86,3 +93,32 @@ async def update_me(
     await db.flush()
     await db.refresh(user)
     return user
+
+
+@router.put("/me/password")
+async def update_password(
+    payload: PasswordUpdate,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from uuid import UUID
+    result = await db.execute(select(User).where(User.id == UUID(current_user["user_id"])))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not verify_password(payload.current_password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+
+    if verify_password(payload.new_password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be different from your current password",
+        )
+
+    user.hashed_password = hash_password(payload.new_password)
+    await db.flush()
+    return {"message": "Password updated successfully"}

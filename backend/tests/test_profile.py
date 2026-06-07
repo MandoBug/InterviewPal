@@ -162,6 +162,68 @@ async def test_profile_update_requires_authentication(client):
 
 
 @pytest.mark.asyncio
+async def test_profile_password_change_updates_login_credentials(client, profile_user):
+    response = await client.put(
+        "/api/auth/me/password",
+        json={
+            "current_password": "password123",
+            "new_password": "newpassword123",
+        },
+        headers={"Authorization": f"Bearer {profile_user['token']}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["message"] == "Password updated successfully"
+
+    old_login = await client.post(
+        "/api/auth/login",
+        json={
+            "email": "profile@ucsc.edu",
+            "password": "password123",
+        },
+    )
+    assert old_login.status_code == 401
+
+    new_login = await client.post(
+        "/api/auth/login",
+        json={
+            "email": "profile@ucsc.edu",
+            "password": "newpassword123",
+        },
+    )
+    assert new_login.status_code == 200
+    assert "access_token" in new_login.json()
+
+
+@pytest.mark.asyncio
+async def test_profile_password_change_rejects_wrong_current_password(client, profile_user):
+    response = await client.put(
+        "/api/auth/me/password",
+        json={
+            "current_password": "wrongpassword",
+            "new_password": "newpassword123",
+        },
+        headers={"Authorization": f"Bearer {profile_user['token']}"},
+    )
+
+    assert response.status_code == 400
+    assert "Current password is incorrect" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_profile_password_change_requires_authentication(client):
+    response = await client.put(
+        "/api/auth/me/password",
+        json={
+            "current_password": "password123",
+            "new_password": "newpassword123",
+        },
+    )
+
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_profile_stats_include_only_completed_current_user_sessions(client, profile_user):
     user_id = UUID(profile_user["user"]["id"])
     now = datetime.now(timezone.utc)
