@@ -10,6 +10,8 @@ from app.main import app
 from app.core.database import Base, get_db
 from app.models.interview import InterviewSession, SessionStatus
 
+pytest_plugins = ["tests.test_reporter"]
+
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
 test_engine = create_async_engine(TEST_DATABASE_URL, echo=False)
