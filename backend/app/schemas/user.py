@@ -21,6 +21,11 @@ class UserUpdate(BaseModel):
     full_name: str = Field(..., min_length=1, max_length=255)
 
 
+class PasswordUpdate(BaseModel):
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8)
+
+
 # ── Response Schemas ──
 
 class UserResponse(BaseModel):
@@ -29,6 +34,7 @@ class UserResponse(BaseModel):
     full_name: str
     is_active: bool
     created_at: datetime
+    password_updated_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

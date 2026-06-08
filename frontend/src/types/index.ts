@@ -5,6 +5,7 @@ export interface User {
   full_name: string;
   is_active: boolean;
   created_at: string;
+  password_updated_at?: string | null;
 }
 
 export interface TokenResponse {

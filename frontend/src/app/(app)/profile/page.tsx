@@ -72,11 +72,19 @@ export default function ProfilePage() {
     email: '',
     avatar_initials: 'IP',
   });
+  const [passwordForm, setPasswordForm] = useState({
+    current_password: '',
+    new_password: '',
+    confirm_password: '',
+  });
   const [theme, setTheme] = useState('dark');
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
   const [passwordMessage, setPasswordMessage] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   const [error, setError] = useState('');
   const [statsError, setStatsError] = useState('');
   const [progressError, setProgressError] = useState('');
@@ -145,10 +153,28 @@ export default function ProfilePage() {
     setSaveMessage('');
   }
 
+  function handlePasswordChange(field: keyof typeof passwordForm, value: string) {
+    setPasswordForm((prev) => ({ ...prev, [field]: value }));
+    setPasswordMessage('');
+    setPasswordError('');
+  }
+
   function startProfileEdit() {
     setSaveMessage('');
     setPasswordMessage('');
+    setPasswordError('');
     setIsEditingProfile(true);
+  }
+
+  function startPasswordChange() {
+    setPasswordForm({
+      current_password: '',
+      new_password: '',
+      confirm_password: '',
+    });
+    setPasswordMessage('');
+    setPasswordError('');
+    setIsChangingPassword(true);
   }
 
   function cancelProfileEdit() {
@@ -163,6 +189,17 @@ export default function ProfilePage() {
     setError('');
     setSaveMessage('');
     setIsEditingProfile(false);
+  }
+
+  function cancelPasswordChange() {
+    setPasswordForm({
+      current_password: '',
+      new_password: '',
+      confirm_password: '',
+    });
+    setPasswordMessage('');
+    setPasswordError('');
+    setIsChangingPassword(false);
   }
 
   async function saveProfile(e: FormEvent) {
@@ -201,8 +238,58 @@ export default function ProfilePage() {
     }
   }
 
+  async function savePassword(e: FormEvent) {
+    e.preventDefault();
+    setPasswordMessage('');
+    setPasswordError('');
+
+    if (passwordForm.new_password.length < 8) {
+      setPasswordError('New password must be at least 8 characters.');
+      return;
+    }
+
+    if (passwordForm.new_password !== passwordForm.confirm_password) {
+      setPasswordError('New password and confirmation do not match.');
+      return;
+    }
+
+    setSavingPassword(true);
+
+    try {
+      const res = await api.put<{
+        message: string;
+        password_updated_at: string | null;
+      }>('/api/auth/me/password', {
+        current_password: passwordForm.current_password,
+        new_password: passwordForm.new_password,
+      });
+      setUser((prev) =>
+        prev
+          ? {
+              ...prev,
+              password_updated_at: res.data.password_updated_at,
+            }
+          : prev
+      );
+      setPasswordForm({
+        current_password: '',
+        new_password: '',
+        confirm_password: '',
+      });
+      setIsChangingPassword(false);
+      setPasswordMessage('Password updated successfully.');
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        'Could not update your password.';
+      setPasswordError(message);
+    } finally {
+      setSavingPassword(false);
+    }
+  }
+
   const initials = profileForm.avatar_initials || getInitials(user?.full_name || '');
-  const passwordLastChangedAt = null;
+  const passwordLastChangedAt = user?.password_updated_at || null;
   const passwordStatus = passwordLastChangedAt
     ? `Last changed: ${formatProfileDate(passwordLastChangedAt)}`
     : user?.created_at
@@ -444,19 +531,91 @@ export default function ProfilePage() {
                     </p>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setPasswordMessage('Password changes are not wired up yet.')
-                    }
-                    className="rounded-xl border border-[rgb(var(--border-rgb))] px-4 py-2 text-sm font-bold text-[rgb(var(--foreground-rgb))] transition hover:bg-[rgb(var(--card-rgb))] sm:shrink-0"
-                  >
-                    Change Password
-                  </button>
+                  {!isChangingPassword && (
+                    <button
+                      type="button"
+                      onClick={startPasswordChange}
+                      className="rounded-xl border border-[rgb(var(--border-rgb))] px-4 py-2 text-sm font-bold text-[rgb(var(--foreground-rgb))] transition hover:bg-[rgb(var(--card-rgb))] sm:shrink-0"
+                    >
+                      Change Password
+                    </button>
+                  )}
                 </div>
 
+                {isChangingPassword && (
+                  <form onSubmit={savePassword} className="mt-5 grid gap-4">
+                    <label className="text-sm font-semibold text-[rgb(var(--foreground-rgb))]">
+                      Current Password
+                      <input
+                        type="password"
+                        value={passwordForm.current_password}
+                        onChange={(e) =>
+                          handlePasswordChange('current_password', e.target.value)
+                        }
+                        className="mt-2 w-full rounded-xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] px-4 py-3 text-sm font-normal text-[rgb(var(--foreground-rgb))] outline-none transition focus:ring-2 focus:ring-blue-500"
+                      />
+                    </label>
+
+                    <label className="text-sm font-semibold text-[rgb(var(--foreground-rgb))]">
+                      New Password
+                      <input
+                        type="password"
+                        minLength={8}
+                        value={passwordForm.new_password}
+                        onChange={(e) =>
+                          handlePasswordChange('new_password', e.target.value)
+                        }
+                        className="mt-2 w-full rounded-xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] px-4 py-3 text-sm font-normal text-[rgb(var(--foreground-rgb))] outline-none transition focus:ring-2 focus:ring-blue-500"
+                      />
+                    </label>
+
+                    <label className="text-sm font-semibold text-[rgb(var(--foreground-rgb))]">
+                      Confirm New Password
+                      <input
+                        type="password"
+                        minLength={8}
+                        value={passwordForm.confirm_password}
+                        onChange={(e) =>
+                          handlePasswordChange('confirm_password', e.target.value)
+                        }
+                        className="mt-2 w-full rounded-xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] px-4 py-3 text-sm font-normal text-[rgb(var(--foreground-rgb))] outline-none transition focus:ring-2 focus:ring-blue-500"
+                      />
+                    </label>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <button
+                        type="submit"
+                        disabled={
+                          savingPassword ||
+                          !passwordForm.current_password ||
+                          !passwordForm.new_password ||
+                          !passwordForm.confirm_password
+                        }
+                        className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-500 disabled:opacity-60 active:scale-95"
+                      >
+                        {savingPassword ? 'Saving...' : 'Save Password'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={cancelPasswordChange}
+                        disabled={savingPassword}
+                        className="rounded-xl border border-[rgb(var(--border-rgb))] px-5 py-3 text-sm font-bold text-[rgb(var(--foreground-rgb))] transition hover:bg-[rgb(var(--card-rgb))] disabled:opacity-60"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {passwordError && (
+                  <p className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-500">
+                    {passwordError}
+                  </p>
+                )}
+
                 {passwordMessage && (
-                  <p className="mt-3 text-sm text-[rgb(var(--muted-rgb))]">
+                  <p className="mt-3 rounded-xl border border-green-500/30 bg-green-500/10 px-3 py-2 text-sm font-semibold text-green-500">
                     {passwordMessage}
                   </p>
                 )}

@@ -2,12 +2,15 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
 from app.main import app
 from app.core.database import Base, get_db
 from app.models.interview import InterviewSession, SessionStatus
+
+pytest_plugins = ["tests.test_reporter"]
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -25,7 +28,7 @@ async def override_get_db():
             raise
 
 
-@pytest.fixture(autouse=True)
+@pytest_asyncio.fixture(autouse=True)
 async def setup_database():
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -34,7 +37,7 @@ async def setup_database():
         await conn.run_sync(Base.metadata.drop_all)
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def client():
     app.dependency_overrides[get_db] = override_get_db
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -42,7 +45,7 @@ async def client():
     app.dependency_overrides.clear()
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def profile_user(client):
     await client.post(
         "/api/auth/signup",
@@ -155,6 +158,75 @@ async def test_profile_update_requires_authentication(client):
         json={
             "full_name": "Anonymous Update",
             "email": "anonymous@ucsc.edu",
+        },
+    )
+
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_profile_password_change_updates_login_credentials(client, profile_user):
+    response = await client.put(
+        "/api/auth/me/password",
+        json={
+            "current_password": "password123",
+            "new_password": "newpassword123",
+        },
+        headers={"Authorization": f"Bearer {profile_user['token']}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["message"] == "Password updated successfully"
+    assert response.json()["password_updated_at"] is not None
+
+    refreshed = await client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {profile_user['token']}"},
+    )
+    assert refreshed.json()["password_updated_at"] == response.json()["password_updated_at"]
+
+    old_login = await client.post(
+        "/api/auth/login",
+        json={
+            "email": "profile@ucsc.edu",
+            "password": "password123",
+        },
+    )
+    assert old_login.status_code == 401
+
+    new_login = await client.post(
+        "/api/auth/login",
+        json={
+            "email": "profile@ucsc.edu",
+            "password": "newpassword123",
+        },
+    )
+    assert new_login.status_code == 200
+    assert "access_token" in new_login.json()
+
+
+@pytest.mark.asyncio
+async def test_profile_password_change_rejects_wrong_current_password(client, profile_user):
+    response = await client.put(
+        "/api/auth/me/password",
+        json={
+            "current_password": "wrongpassword",
+            "new_password": "newpassword123",
+        },
+        headers={"Authorization": f"Bearer {profile_user['token']}"},
+    )
+
+    assert response.status_code == 400
+    assert "Current password is incorrect" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_profile_password_change_requires_authentication(client):
+    response = await client.put(
+        "/api/auth/me/password",
+        json={
+            "current_password": "password123",
+            "new_password": "newpassword123",
         },
     )
 
